@@ -13,16 +13,21 @@ body{
 
 .post{
   background:white;
-  padding:10px;
+  padding:12px;
   margin-top:10px;
   border-radius:8px;
   box-shadow:0 2px 5px rgba(0,0,0,0.1);
 }
 
+.username{
+  font-weight:bold;
+  margin-bottom:5px;
+  color:#333;
+}
+
 button{
   margin:5px 0;
   padding:6px 10px;
-  cursor:pointer;
 }
 </style>
 </head>
@@ -61,16 +66,20 @@ document.addEventListener("DOMContentLoaded", function(){
 
   const authSection = document.getElementById("authSection");
   const appSection = document.getElementById("appSection");
-  const userEmail = document.getElementById("userEmail");
+  const userEmailSpan = document.getElementById("userEmail");
 
-  // 🔥 Listen for login state
+  let currentUser = null;
+
+  // Listen for auth changes
   supabase.auth.onAuthStateChange((event, session) => {
     if(session){
+      currentUser = session.user;
       authSection.style.display="none";
       appSection.style.display="block";
-      userEmail.innerText = session.user.email || "Guest";
+      userEmailSpan.innerText = currentUser.email || "Guest";
       loadPosts();
     } else {
+      currentUser = null;
       authSection.style.display="block";
       appSection.style.display="none";
     }
@@ -85,10 +94,7 @@ document.addEventListener("DOMContentLoaded", function(){
 
   // Guest Login
   document.getElementById("guestBtn").addEventListener("click", async ()=>{
-    const { error } = await supabase.auth.signInAnonymously();
-    if(error){
-      alert(error.message);
-    }
+    await supabase.auth.signInAnonymously();
   });
 
   // Logout
@@ -99,34 +105,26 @@ document.addEventListener("DOMContentLoaded", function(){
   // Post
   document.getElementById("postBtn").addEventListener("click", async ()=>{
     const text=document.getElementById("postInput").value;
-
-    if(text.trim()===""){
-      alert("Write something first");
-      return;
-    }
+    if(text.trim()==="") return;
 
     const { error } = await supabase
       .from("posts")
-      .insert([{ content:text }]);
+      .insert([{
+        content:text,
+        user_email: currentUser.email || "Guest"
+      }]);
 
-    if(error){
-      alert(error.message);
-    } else {
+    if(!error){
       document.getElementById("postInput").value="";
       loadPosts();
     }
   });
 
   async function loadPosts(){
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("posts")
       .select("*")
       .order("id",{ascending:false});
-
-    if(error){
-      console.log(error);
-      return;
-    }
 
     const feed=document.getElementById("feed");
     feed.innerHTML="";
@@ -134,7 +132,17 @@ document.addEventListener("DOMContentLoaded", function(){
     data.forEach(p=>{
       const div=document.createElement("div");
       div.className="post";
-      div.innerText=p.content;
+
+      const username=document.createElement("div");
+      username.className="username";
+      username.innerText = p.user_email;
+
+      const content=document.createElement("div");
+      content.innerText = p.content;
+
+      div.appendChild(username);
+      div.appendChild(content);
+
       feed.appendChild(div);
     });
   }
