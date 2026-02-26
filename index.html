@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Public Social Website</title>
+<title>Social Website</title>
 
 <style>
 body{
@@ -16,18 +16,35 @@ body{
   padding:10px;
   margin-top:10px;
   border-radius:8px;
+  box-shadow:0 2px 5px rgba(0,0,0,0.1);
+}
+
+button{
+  margin:5px 0;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🌍 Public Social Website</h2>
+<h2>🌍 Social Website</h2>
 
-<input id="postInput" placeholder="Write something...">
-<button id="postBtn">Post</button>
+<div id="authSection">
+  <button id="googleBtn">Login with Google</button>
+  <button id="guestBtn">Continue as Guest</button>
+</div>
 
-<div id="feed"></div>
+<div id="appSection" style="display:none;">
+  <p>Logged in as: <span id="userEmail"></span></p>
+  <button id="logoutBtn">Logout</button>
+
+  <br><br>
+
+  <input id="postInput" placeholder="Write something...">
+  <button id="postBtn">Post</button>
+
+  <div id="feed"></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -40,18 +57,40 @@ document.addEventListener("DOMContentLoaded", function(){
     "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
   );
 
-  const postBtn = document.getElementById("postBtn");
-  const postInput = document.getElementById("postInput");
-  const feed = document.getElementById("feed");
+  const authSection = document.getElementById("authSection");
+  const appSection = document.getElementById("appSection");
+  const userEmail = document.getElementById("userEmail");
 
-  postBtn.addEventListener("click", async function(){
-
-    const text = postInput.value;
-
-    if(text.trim()===""){
-      alert("Write something first");
-      return;
+  async function checkUser(){
+    const { data } = await supabase.auth.getSession();
+    if(data.session){
+      authSection.style.display="none";
+      appSection.style.display="block";
+      userEmail.innerText = data.session.user.email || "Guest";
+      loadPosts();
     }
+  }
+
+  document.getElementById("googleBtn").addEventListener("click", async ()=>{
+    await supabase.auth.signInWithOAuth({
+      provider:"google"
+    });
+  });
+
+  document.getElementById("guestBtn").addEventListener("click", async ()=>{
+    await supabase.auth.signInAnonymously();
+    checkUser();
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async ()=>{
+    await supabase.auth.signOut();
+    location.reload();
+  });
+
+  document.getElementById("postBtn").addEventListener("click", async ()=>{
+    const text=document.getElementById("postInput").value;
+
+    if(text.trim()==="") return;
 
     const { error } = await supabase
       .from("posts")
@@ -60,24 +99,18 @@ document.addEventListener("DOMContentLoaded", function(){
     if(error){
       alert(error.message);
     } else {
-      postInput.value="";
+      document.getElementById("postInput").value="";
       loadPosts();
     }
-
   });
 
   async function loadPosts(){
-
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("posts")
       .select("*")
       .order("id",{ascending:false});
 
-    if(error){
-      console.log(error);
-      return;
-    }
-
+    const feed=document.getElementById("feed");
     feed.innerHTML="";
 
     data.forEach(p=>{
@@ -88,7 +121,7 @@ document.addEventListener("DOMContentLoaded", function(){
     });
   }
 
-  loadPosts();
+  checkUser();
 
 });
 
