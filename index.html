@@ -2,11 +2,11 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Social Website</title>
+<title>Ultimate Social App</title>
 
 <style>
 body{
-  font-family: Arial;
+  font-family:Arial;
   padding:20px;
   background:#f2f2f2;
 }
@@ -14,32 +14,47 @@ body{
 .post{
   background:white;
   padding:12px;
-  margin-top:10px;
+  margin-top:12px;
   border-radius:8px;
   box-shadow:0 2px 5px rgba(0,0,0,0.1);
 }
 
 .username{
   font-weight:bold;
-  margin-bottom:5px;
 }
 
 .time{
   font-size:12px;
   color:gray;
-  margin-top:5px;
+  margin-top:4px;
+}
+
+.comment{
+  font-size:13px;
+  margin-left:10px;
+  margin-top:6px;
+  color:#444;
+}
+
+.profile-img{
+  width:32px;
+  height:32px;
+  border-radius:50%;
+  vertical-align:middle;
+  margin-right:6px;
 }
 
 button{
-  margin:5px 0;
-  padding:6px 10px;
+  margin:5px 5px 5px 0;
+  padding:5px 10px;
+  cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🌍 Social Website (Real-Time)</h2>
+<h2>🔥 Ultimate Social App</h2>
 
 <div id="authSection">
   <button id="googleBtn">Login with Google</button>
@@ -47,7 +62,12 @@ button{
 </div>
 
 <div id="appSection" style="display:none;">
-  <p>Logged in as: <span id="userEmail"></span></p>
+
+  <p>
+    <img id="profilePic" class="profile-img">
+    <span id="userEmail"></span>
+  </p>
+
   <button id="logoutBtn">Logout</button>
 
   <br><br>
@@ -56,6 +76,7 @@ button{
   <button id="postBtn">Post</button>
 
   <div id="feed"></div>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -64,132 +85,181 @@ button{
 
 document.addEventListener("DOMContentLoaded", function(){
 
-  const supabase = window.supabase.createClient(
-    "https://dgehzagvyrxbnnvgsiff.supabase.co",
-    "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
-  );
+const supabase = window.supabase.createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
 
-  const authSection = document.getElementById("authSection");
-  const appSection = document.getElementById("appSection");
-  const userEmailSpan = document.getElementById("userEmail");
+let currentUser = null;
 
-  let currentUser = null;
+const authSection = document.getElementById("authSection");
+const appSection = document.getElementById("appSection");
+const userEmailSpan = document.getElementById("userEmail");
+const profilePic = document.getElementById("profilePic");
 
-  // Auth Listener
-  supabase.auth.onAuthStateChange((event, session) => {
-    if(session){
-      currentUser = session.user;
-      authSection.style.display="none";
-      appSection.style.display="block";
-      userEmailSpan.innerText = currentUser.email || "Guest";
-      loadPosts();
-    } else {
-      currentUser = null;
-      authSection.style.display="block";
-      appSection.style.display="none";
-    }
-  });
+// AUTH LISTENER
+supabase.auth.onAuthStateChange((event, session)=>{
+  if(session){
+    currentUser = session.user;
 
-  // Google Login
-  document.getElementById("googleBtn").addEventListener("click", async ()=>{
-    await supabase.auth.signInWithOAuth({
-      provider:"google"
-    });
-  });
+    authSection.style.display="none";
+    appSection.style.display="block";
 
-  // Guest Login
-  document.getElementById("guestBtn").addEventListener("click", async ()=>{
-    await supabase.auth.signInAnonymously();
-  });
+    userEmailSpan.innerText = currentUser.email || "Guest";
+    profilePic.src = currentUser.user_metadata?.avatar_url || "https://via.placeholder.com/32";
 
-  // Logout
-  document.getElementById("logoutBtn").addEventListener("click", async ()=>{
-    await supabase.auth.signOut();
-  });
-
-  // Post
-  document.getElementById("postBtn").addEventListener("click", async ()=>{
-    const text=document.getElementById("postInput").value;
-    if(text.trim()==="") return;
-
-    await supabase.from("posts").insert([{
-      content:text,
-      user_email: currentUser.email || "Guest"
-    }]);
-
-    document.getElementById("postInput").value="";
-  });
-
-  // 🔥 REAL-TIME SUBSCRIPTION
-  supabase
-    .channel("realtime-posts")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "posts" },
-      () => {
-        loadPosts();
-      }
-    )
-    .subscribe();
-
-  async function loadPosts(){
-    const { data } = await supabase
-      .from("posts")
-      .select("*")
-      .order("id",{ascending:false});
-
-    const feed=document.getElementById("feed");
-    feed.innerHTML="";
-
-    data.forEach(p=>{
-
-      const div=document.createElement("div");
-      div.className="post";
-
-      const username=document.createElement("div");
-      username.className="username";
-      username.innerText = p.user_email;
-
-      const content=document.createElement("div");
-      content.innerText = p.content;
-
-      const time=document.createElement("div");
-      time.className="time";
-      time.innerText = timeAgo(p.created_at);
-
-      div.appendChild(username);
-      div.appendChild(content);
-      div.appendChild(time);
-
-      feed.appendChild(div);
-    });
+    loadPosts();
+  } else {
+    currentUser = null;
+    authSection.style.display="block";
+    appSection.style.display="none";
   }
-
-  function timeAgo(dateString){
-    const now = new Date();
-    const past = new Date(dateString);
-    const seconds = Math.floor((now - past) / 1000);
-
-    const intervals = {
-      year: 31536000,
-      month: 2592000,
-      day: 86400,
-      hour: 3600,
-      minute: 60
-    };
-
-    for (let key in intervals) {
-      const value = Math.floor(seconds / intervals[key]);
-      if (value >= 1) {
-        return value + " " + key + (value > 1 ? "s ago" : " ago");
-      }
-    }
-
-    return "Just now";
-  }
-
 });
 
+// LOGIN
+document.getElementById("googleBtn").onclick =
+  ()=> supabase.auth.signInWithOAuth({provider:"google"});
+
+document.getElementById("guestBtn").onclick =
+  ()=> supabase.auth.signInAnonymously();
+
+document.getElementById("logoutBtn").onclick =
+  ()=> supabase.auth.signOut();
+
+// CREATE POST
+document.getElementById("postBtn").onclick = async ()=>{
+
+  const text = document.getElementById("postInput").value;
+  if(!text.trim()) return;
+
+  await supabase.from("posts").insert([{
+    content:text,
+    user_email:currentUser.email || "Guest",
+    user_id:currentUser.id,
+    likes:0
+  }]);
+
+  document.getElementById("postInput").value="";
+};
+
+// REALTIME
+supabase.channel("realtime")
+.on("postgres_changes",
+  {event:"*",schema:"public",table:"posts"},
+  ()=> loadPosts()
+)
+.on("postgres_changes",
+  {event:"*",schema:"public",table:"comments"},
+  ()=> loadPosts()
+)
+.subscribe();
+
+// LOAD POSTS
+async function loadPosts(){
+
+  const {data:posts} =
+    await supabase.from("posts")
+    .select("*")
+    .order("id",{ascending:false});
+
+  const {data:comments} =
+    await supabase.from("comments")
+    .select("*");
+
+  const feed = document.getElementById("feed");
+  feed.innerHTML="";
+
+  posts.forEach(post=>{
+
+    const div = document.createElement("div");
+    div.className="post";
+
+    div.innerHTML = `
+      <div class="username">${post.user_email}</div>
+      <div>${post.content}</div>
+      <div class="time">${timeAgo(post.created_at)}</div>
+      <button onclick="likePost(${post.id},${post.likes})">❤️ ${post.likes}</button>
+      ${post.user_id===currentUser.id ?
+        `<button onclick="deletePost(${post.id})">🗑 Delete</button>` : ""}
+      <div id="comments-${post.id}"></div>
+      <input id="commentInput-${post.id}" placeholder="Comment...">
+      <button onclick="addComment(${post.id})">Comment</button>
+    `;
+
+    feed.appendChild(div);
+
+    const commentContainer =
+      document.getElementById(`comments-${post.id}`);
+
+    comments
+      .filter(c=>c.post_id===post.id)
+      .forEach(c=>{
+        const cm=document.createElement("div");
+        cm.className="comment";
+        cm.innerText = `${c.user_email}: ${c.content}`;
+        commentContainer.appendChild(cm);
+      });
+
+  });
+}
+
+// LIKE
+window.likePost = async (id,likes)=>{
+  await supabase.from("posts")
+    .update({likes:likes+1})
+    .eq("id",id);
+};
+
+// DELETE POST
+window.deletePost = async (id)=>{
+  await supabase.from("posts")
+    .delete()
+    .eq("id",id);
+};
+
+// ADD COMMENT
+window.addComment = async (postId)=>{
+
+  const input =
+    document.getElementById(`commentInput-${postId}`);
+
+  if(!input.value.trim()) return;
+
+  await supabase.from("comments").insert([{
+    post_id:postId,
+    user_email:currentUser.email || "Guest",
+    user_id:currentUser.id,
+    content:input.value
+  }]);
+
+  input.value="";
+};
+
+// TIME AGO
+function timeAgo(dateString){
+
+  const now=new Date();
+  const past=new Date(dateString);
+  const seconds=Math.floor((now-past)/1000);
+
+  const intervals={
+    year:31536000,
+    month:2592000,
+    day:86400,
+    hour:3600,
+    minute:60
+  };
+
+  for(let key in intervals){
+    const value=Math.floor(seconds/intervals[key]);
+    if(value>=1)
+      return value+" "+key+(value>1?"s ago":" ago");
+  }
+
+  return "Just now";
+}
+
+});
 </script>
 
 </body>
