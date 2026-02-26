@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Social App</title>
+
+<style>
+body{
+  font-family: Arial, sans-serif;
+  background:#f2f2f2;
+  padding:20px;
+}
+
+h2{
+  text-align:center;
+}
+
+input{
+  width:70%;
+  padding:10px;
+}
+
+button{
+  padding:10px;
+  margin-left:5px;
+  cursor:pointer;
+}
+
+.post{
+  background:white;
+  padding:12px;
+  margin-top:12px;
+  border-radius:10px;
+  box-shadow:0 0 5px rgba(0,0,0,0.1);
+}
+</style>
+</head>
+
+<body>
+
+<h2>📱 My Social App</h2>
+
+<input id="postInput" placeholder="Write something...">
+<button onclick="addPost()">Post</button>
+
+<div id="feed"></div>
+
+<script>
+
+// get posts from phone storage
+function getPosts(){
+  return JSON.parse(localStorage.getItem("posts")) || [];
+}
+
+// save posts to phone storage
+function savePosts(posts){
+  localStorage.setItem("posts", JSON.stringify(posts));
+}
+
+// add new post
+function addPost(){
+  const input = document.getElementById("postInput");
+  const text = input.value.trim();
+
+  if(text === "") return;
+
+  let posts = getPosts();
+
+  posts.unshift({
+    text:text,
+    likes:0
+  });
+
+  savePosts(posts);
+  input.value="";
+  loadPosts();
+}
+
+// like button
+function likePost(i){
+  let posts = getPosts();
+  posts[i].likes++;
+  savePosts(posts);
+  loadPosts();
+}
+
+// show posts
+function loadPosts(){
+  const feed = document.getElementById("feed");
+  const posts = getPosts();
+
+  feed.innerHTML="";
+
+  posts.forEach((p,i)=>{
+    const div=document.createElement("div");
+    div.className="post";
+
+    div.innerHTML = `
+      <b>${p.text}</b><br>
+      ❤️ ${p.likes}<br>
+      <button onclick="likePost(${i})">Like</button>
+    `;
+
+    feed.appendChild(div);
+  });
+}
+
+loadPosts();
+
+</script>
+
+</body>
+</html>
