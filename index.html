@@ -33,14 +33,13 @@ body{
 button{
   margin:5px 0;
   padding:6px 10px;
-  cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🌍 Social Website</h2>
+<h2>🌍 Social Website (Real-Time)</h2>
 
 <div id="authSection">
   <button id="googleBtn">Login with Google</button>
@@ -76,7 +75,7 @@ document.addEventListener("DOMContentLoaded", function(){
 
   let currentUser = null;
 
-  // Listen for login state
+  // Auth Listener
   supabase.auth.onAuthStateChange((event, session) => {
     if(session){
       currentUser = session.user;
@@ -111,21 +110,27 @@ document.addEventListener("DOMContentLoaded", function(){
   // Post
   document.getElementById("postBtn").addEventListener("click", async ()=>{
     const text=document.getElementById("postInput").value;
-
     if(text.trim()==="") return;
 
-    const { error } = await supabase
-      .from("posts")
-      .insert([{
-        content:text,
-        user_email: currentUser.email || "Guest"
-      }]);
+    await supabase.from("posts").insert([{
+      content:text,
+      user_email: currentUser.email || "Guest"
+    }]);
 
-    if(!error){
-      document.getElementById("postInput").value="";
-      loadPosts();
-    }
+    document.getElementById("postInput").value="";
   });
+
+  // 🔥 REAL-TIME SUBSCRIPTION
+  supabase
+    .channel("realtime-posts")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "posts" },
+      () => {
+        loadPosts();
+      }
+    )
+    .subscribe();
 
   async function loadPosts(){
     const { data } = await supabase
@@ -161,7 +166,6 @@ document.addEventListener("DOMContentLoaded", function(){
   }
 
   function timeAgo(dateString){
-
     const now = new Date();
     const past = new Date(dateString);
     const seconds = Math.floor((now - past) / 1000);
