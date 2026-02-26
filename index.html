@@ -21,6 +21,8 @@ body{
 
 button{
   margin:5px 0;
+  padding:6px 10px;
+  cursor:pointer;
 }
 </style>
 </head>
@@ -61,36 +63,47 @@ document.addEventListener("DOMContentLoaded", function(){
   const appSection = document.getElementById("appSection");
   const userEmail = document.getElementById("userEmail");
 
-  async function checkUser(){
-    const { data } = await supabase.auth.getSession();
-    if(data.session){
+  // 🔥 Listen for login state
+  supabase.auth.onAuthStateChange((event, session) => {
+    if(session){
       authSection.style.display="none";
       appSection.style.display="block";
-      userEmail.innerText = data.session.user.email || "Guest";
+      userEmail.innerText = session.user.email || "Guest";
       loadPosts();
+    } else {
+      authSection.style.display="block";
+      appSection.style.display="none";
     }
-  }
+  });
 
+  // Google Login
   document.getElementById("googleBtn").addEventListener("click", async ()=>{
     await supabase.auth.signInWithOAuth({
       provider:"google"
     });
   });
 
+  // Guest Login
   document.getElementById("guestBtn").addEventListener("click", async ()=>{
-    await supabase.auth.signInAnonymously();
-    checkUser();
+    const { error } = await supabase.auth.signInAnonymously();
+    if(error){
+      alert(error.message);
+    }
   });
 
+  // Logout
   document.getElementById("logoutBtn").addEventListener("click", async ()=>{
     await supabase.auth.signOut();
-    location.reload();
   });
 
+  // Post
   document.getElementById("postBtn").addEventListener("click", async ()=>{
     const text=document.getElementById("postInput").value;
 
-    if(text.trim()==="") return;
+    if(text.trim()===""){
+      alert("Write something first");
+      return;
+    }
 
     const { error } = await supabase
       .from("posts")
@@ -105,10 +118,15 @@ document.addEventListener("DOMContentLoaded", function(){
   });
 
   async function loadPosts(){
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("posts")
       .select("*")
       .order("id",{ascending:false});
+
+    if(error){
+      console.log(error);
+      return;
+    }
 
     const feed=document.getElementById("feed");
     feed.innerHTML="";
@@ -120,8 +138,6 @@ document.addEventListener("DOMContentLoaded", function(){
       feed.appendChild(div);
     });
   }
-
-  checkUser();
 
 });
 
