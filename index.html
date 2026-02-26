@@ -16,7 +16,6 @@ body{
   padding:10px;
   margin-top:10px;
   border-radius:8px;
-  box-shadow:0 2px 5px rgba(0,0,0,0.1);
 }
 </style>
 </head>
@@ -39,7 +38,6 @@ const supabase = window.supabase.createClient(
 "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-// MAKE FUNCTION GLOBAL
 window.addPost = async function(){
 
   const text = document.getElementById("postInput").value;
@@ -54,8 +52,7 @@ window.addPost = async function(){
     .insert([{ content:text }]);
 
   if(error){
-    alert("Error: " + error.message);
-    console.log(error);
+    alert(error.message);
   } else {
     document.getElementById("postInput").value="";
     loadPosts();
@@ -64,15 +61,10 @@ window.addPost = async function(){
 
 async function loadPosts(){
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("posts")
     .select("*")
     .order("id",{ascending:false});
-
-  if(error){
-    console.log(error);
-    return;
-  }
 
   const feed=document.getElementById("feed");
   feed.innerHTML="";
