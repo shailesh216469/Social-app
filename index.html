@@ -25,7 +25,7 @@ body{
 <h2>🌍 Public Social Website</h2>
 
 <input id="postInput" placeholder="Write something...">
-<button onclick="addPost()">Post</button>
+<button id="postBtn">Post</button>
 
 <div id="feed"></div>
 
@@ -33,51 +33,64 @@ body{
 
 <script>
 
-const supabase = window.supabase.createClient(
-"https://dgehzagvyrxbnnvgsiff.supabase.co",
-"sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
-);
+document.addEventListener("DOMContentLoaded", function(){
 
-window.addPost = async function(){
+  const supabase = window.supabase.createClient(
+    "https://dgehzagvyrxbnnvgsiff.supabase.co",
+    "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+  );
 
-  const text = document.getElementById("postInput").value;
+  const postBtn = document.getElementById("postBtn");
+  const postInput = document.getElementById("postInput");
+  const feed = document.getElementById("feed");
 
-  if(text.trim()===""){
-    alert("Write something first");
-    return;
-  }
+  postBtn.addEventListener("click", async function(){
 
-  const { data, error } = await supabase
-    .from("posts")
-    .insert([{ content:text }]);
+    const text = postInput.value;
 
-  if(error){
-    alert(error.message);
-  } else {
-    document.getElementById("postInput").value="";
-    loadPosts();
-  }
-}
+    if(text.trim()===""){
+      alert("Write something first");
+      return;
+    }
 
-async function loadPosts(){
+    const { error } = await supabase
+      .from("posts")
+      .insert([{ content:text }]);
 
-  const { data } = await supabase
-    .from("posts")
-    .select("*")
-    .order("id",{ascending:false});
+    if(error){
+      alert(error.message);
+    } else {
+      postInput.value="";
+      loadPosts();
+    }
 
-  const feed=document.getElementById("feed");
-  feed.innerHTML="";
-
-  data.forEach(p=>{
-    const div=document.createElement("div");
-    div.className="post";
-    div.innerText=p.content;
-    feed.appendChild(div);
   });
-}
 
-loadPosts();
+  async function loadPosts(){
+
+    const { data, error } = await supabase
+      .from("posts")
+      .select("*")
+      .order("id",{ascending:false});
+
+    if(error){
+      console.log(error);
+      return;
+    }
+
+    feed.innerHTML="";
+
+    data.forEach(p=>{
+      const div=document.createElement("div");
+      div.className="post";
+      div.innerText=p.content;
+      feed.appendChild(div);
+    });
+  }
+
+  loadPosts();
+
+});
 
 </script>
 
