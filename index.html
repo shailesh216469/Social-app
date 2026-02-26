@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Social Website</title>
+<title>Public Social Website</title>
 
 <style>
 body{
@@ -16,6 +16,7 @@ body{
   padding:10px;
   margin-top:10px;
   border-radius:8px;
+  box-shadow:0 2px 5px rgba(0,0,0,0.1);
 }
 </style>
 </head>
@@ -38,24 +39,40 @@ const supabase = window.supabase.createClient(
 "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-async function addPost(){
+// MAKE FUNCTION GLOBAL
+window.addPost = async function(){
+
   const text = document.getElementById("postInput").value;
 
-  if(text.trim() === "") return;
+  if(text.trim()===""){
+    alert("Write something first");
+    return;
+  }
 
-  await supabase.from("posts").insert([
-    { content: text }
-  ]);
+  const { data, error } = await supabase
+    .from("posts")
+    .insert([{ content:text }]);
 
-  document.getElementById("postInput").value="";
-  loadPosts();
+  if(error){
+    alert("Error: " + error.message);
+    console.log(error);
+  } else {
+    document.getElementById("postInput").value="";
+    loadPosts();
+  }
 }
 
 async function loadPosts(){
-  const { data } = await supabase
+
+  const { data, error } = await supabase
     .from("posts")
     .select("*")
     .order("id",{ascending:false});
+
+  if(error){
+    console.log(error);
+    return;
+  }
 
   const feed=document.getElementById("feed");
   feed.innerHTML="";
