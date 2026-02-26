@@ -2,105 +2,68 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Social App</title>
+<title>My Social Website</title>
 
 <style>
 body{
-  font-family: Arial, sans-serif;
-  background:#f2f2f2;
+  font-family: Arial;
   padding:20px;
-}
-
-h2{
-  text-align:center;
-}
-
-input{
-  width:70%;
-  padding:10px;
-}
-
-button{
-  padding:10px;
-  margin-left:5px;
-  cursor:pointer;
+  background:#f2f2f2;
 }
 
 .post{
   background:white;
-  padding:12px;
-  margin-top:12px;
-  border-radius:10px;
-  box-shadow:0 0 5px rgba(0,0,0,0.1);
+  padding:10px;
+  margin-top:10px;
+  border-radius:8px;
 }
 </style>
 </head>
 
 <body>
 
-<h2>📱 My Social App</h2>
+<h2>🌍 Public Social Website</h2>
 
 <input id="postInput" placeholder="Write something...">
 <button onclick="addPost()">Post</button>
 
 <div id="feed"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
 
-// get posts from phone storage
-function getPosts(){
-  return JSON.parse(localStorage.getItem("posts")) || [];
-}
+const supabase = window.supabase.createClient(
+"YOUR_URL",
+"YOUR_KEY"
+);
 
-// save posts to phone storage
-function savePosts(posts){
-  localStorage.setItem("posts", JSON.stringify(posts));
-}
+async function addPost(){
+  const text = document.getElementById("postInput").value;
 
-// add new post
-function addPost(){
-  const input = document.getElementById("postInput");
-  const text = input.value.trim();
+  if(text.trim() === "") return;
 
-  if(text === "") return;
+  await supabase.from("posts").insert([
+    { content: text }
+  ]);
 
-  let posts = getPosts();
-
-  posts.unshift({
-    text:text,
-    likes:0
-  });
-
-  savePosts(posts);
-  input.value="";
+  document.getElementById("postInput").value="";
   loadPosts();
 }
 
-// like button
-function likePost(i){
-  let posts = getPosts();
-  posts[i].likes++;
-  savePosts(posts);
-  loadPosts();
-}
+async function loadPosts(){
+  const { data } = await supabase
+    .from("posts")
+    .select("*")
+    .order("id",{ascending:false});
 
-// show posts
-function loadPosts(){
-  const feed = document.getElementById("feed");
-  const posts = getPosts();
-
+  const feed=document.getElementById("feed");
   feed.innerHTML="";
 
-  posts.forEach((p,i)=>{
+  data.forEach(p=>{
     const div=document.createElement("div");
     div.className="post";
-
-    div.innerHTML = `
-      <b>${p.text}</b><br>
-      ❤️ ${p.likes}<br>
-      <button onclick="likePost(${i})">Like</button>
-    `;
-
+    div.innerText=p.content;
     feed.appendChild(div);
   });
 }
