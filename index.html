@@ -2,19 +2,36 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Test</title>
+  <title>Ultimate Social App</title>
 </head>
 <body>
 
-<h1 style="color:red;">VERSION 3</h1>
+<h2>🔥 Ultimate Social App</h2>
 
-<button id="testBtn">Click Me</button>
+<button id="googleBtn">Login with Google</button>
+<button id="guestBtn">Guest Login</button>
 
-<script>
-console.log("SCRIPT WORKING");
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-document.getElementById("testBtn").addEventListener("click", () => {
-  console.log("BUTTON CLICKED");
+console.log("MODULE SCRIPT STARTED");
+
+const supabase = createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
+
+document.getElementById("googleBtn").addEventListener("click", async () => {
+  console.log("Google clicked");
+  await supabase.auth.signInWithOAuth({
+    provider: "google"
+  });
+});
+
+document.getElementById("guestBtn").addEventListener("click", async () => {
+  console.log("Guest clicked");
+  const { error } = await supabase.auth.signInAnonymously();
+  if (error) console.error(error);
 });
 </script>
 
