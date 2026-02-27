@@ -39,6 +39,15 @@ body{
 }
 button{
   margin-right:5px;
+  margin-top:5px;
+}
+.edit-area{
+  width:100%;
+  margin-top:5px;
+}
+.small{
+  font-size:12px;
+  opacity:0.7;
 }
 </style>
 </head>
@@ -151,8 +160,7 @@ async function loadPosts(){
     .select("*")
     .order("created_at",{ascending:false});
 
-  const container = document.getElementById("posts");
-  container.innerHTML="";
+  document.getElementById("posts").innerHTML="";
 
   for(const post of posts){
     renderPost(post);
@@ -187,12 +195,19 @@ async function renderPost(post){
   div.className="post";
   div.id="post-"+post.id;
 
+  const timeText = post.updated_at && post.updated_at !== post.created_at
+    ? "Edited • " + new Date(post.updated_at).toLocaleString()
+    : new Date(post.created_at).toLocaleString();
+
   div.innerHTML=`
-    <b>${post.username || "User"}</b><br>
-    ${post.content}
-    <br><br>
+    <b>${post.username || "User"}</b>
+    <div class="small">${timeText}</div>
+    <div class="content">${post.content}</div>
+
+    <br>
     ❤️ <span id="like-count-${post.id}">${count || 0}</span>
     <br><br>
+
     <button 
       class="like-btn ${liked ? "liked" : "not-liked"}"
       onclick="toggleLike('${post.id}')"
@@ -200,14 +215,54 @@ async function renderPost(post){
     >
       ${liked ? "Unlike" : "Like"}
     </button>
+
     ${
       currentUser && currentUser.id===post.user_id
-      ? `<button onclick="deletePost('${post.id}')">Delete</button>`
+      ? `
+        <button onclick="startEdit('${post.id}')">Edit</button>
+        <button onclick="deletePost('${post.id}')">Delete</button>
+      `
       : ""
     }
+
+    <div id="edit-box-${post.id}"></div>
   `;
 
   document.getElementById("posts").prepend(div);
+}
+
+function startEdit(postId){
+
+  const contentDiv = document.querySelector("#post-"+postId+" .content");
+  const oldText = contentDiv.innerText;
+
+  const editBox = document.getElementById("edit-box-"+postId);
+
+  editBox.innerHTML = `
+    <textarea class="edit-area" id="edit-input-${postId}">${oldText}</textarea>
+    <button onclick="saveEdit('${postId}')">Save</button>
+    <button onclick="cancelEdit('${postId}')">Cancel</button>
+  `;
+}
+
+function cancelEdit(postId){
+  document.getElementById("edit-box-"+postId).innerHTML="";
+}
+
+async function saveEdit(postId){
+
+  const newText = document.getElementById("edit-input-"+postId).value;
+  if(!newText) return;
+
+  await supabase
+    .from("posts")
+    .update({
+      content: newText,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", postId);
+
+  document.getElementById("edit-box-"+postId).innerHTML="";
 }
 
 function removePost(id){
@@ -229,6 +284,15 @@ function subscribeRealtime(){
 
         if(payload.eventType === "DELETE"){
           removePost(payload.old.id);
+        }
+
+        if(payload.eventType === "UPDATE"){
+          const postDiv = document.getElementById("post-"+payload.new.id);
+          if(postDiv){
+            postDiv.querySelector(".content").innerText = payload.new.content;
+            postDiv.querySelector(".small").innerText =
+              "Edited • " + new Date(payload.new.updated_at).toLocaleString();
+          }
         }
       }
     )
@@ -287,6 +351,9 @@ document.getElementById("postBtn").onclick = createPost;
 
 window.toggleLike = toggleLike;
 window.deletePost = deletePost;
+window.startEdit = startEdit;
+window.saveEdit = saveEdit;
+window.cancelEdit = cancelEdit;
 
 init();
 
