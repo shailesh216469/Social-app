@@ -6,7 +6,6 @@
 <style>
 body { font-family: Arial; padding: 20px; }
 .post { border:1px solid #ccc; padding:10px; margin-top:10px; border-radius:6px; }
-.likeBtn { padding:4px 8px; }
 </style>
 </head>
 <body>
@@ -37,6 +36,7 @@ const supabase = createClient(
 );
 
 let currentUser = null;
+
 const authDiv = document.getElementById("auth");
 const appDiv = document.getElementById("app");
 const userText = document.getElementById("user");
@@ -95,58 +95,51 @@ post.onclick = async ()=>{
 // ================= LOAD POSTS =================
 
 async function loadPosts(){
-  const { data } = await supabase
+  const { data:posts } = await supabase
     .from("posts")
     .select("*")
     .order("created_at",{ascending:false});
 
   feed.innerHTML="";
-  for(const post of data){
-    await renderPost(post);
+
+  for(const post of posts){
+
+    const { data:likes } = await supabase
+      .from("likes")
+      .select("*")
+      .eq("post_id",post.id)
+      .eq("active",true);
+
+    const likeCount = likes.length;
+
+    const { data:myLike } = await supabase
+      .from("likes")
+      .select("active")
+      .eq("post_id",post.id)
+      .eq("user_id",currentUser.id)
+      .maybeSingle();
+
+    const isLiked = myLike?.active === true;
+
+    const div = document.createElement("div");
+    div.className="post";
+
+    div.innerHTML = `
+      <p>${post.content}</p>
+      <button>${isLiked?"❤️ Liked":"🤍 Like"}</button>
+      <span>${likeCount} likes</span>
+    `;
+
+    feed.appendChild(div);
+
+    div.querySelector("button").onclick = async ()=>{
+      await toggleLike(post.id);
+    };
   }
 }
 
 
-// ================= RENDER POST =================
-
-async function renderPost(post){
-
-  const { data:likes } = await supabase
-    .from("likes")
-    .select("*")
-    .eq("post_id",post.id)
-    .eq("active",true);
-
-  const likeCount = likes.length;
-
-  const { data:myLike } = await supabase
-    .from("likes")
-    .select("active")
-    .eq("post_id",post.id)
-    .eq("user_id",currentUser.id)
-    .maybeSingle();
-
-  const isLiked = myLike?.active === true;
-
-  const div = document.createElement("div");
-  div.className="post";
-  div.setAttribute("data-id",post.id);
-
-  div.innerHTML = `
-    <p>${post.content}</p>
-    <button class="likeBtn">${isLiked?"❤️ Liked":"🤍 Like"}</button>
-    <span class="likeCount">${likeCount} likes</span>
-  `;
-
-  feed.appendChild(div);
-
-  div.querySelector(".likeBtn").onclick = async ()=>{
-    await toggleLike(post.id);
-  };
-}
-
-
-// ================= TOGGLE LIKE (ACTIVE SYSTEM) =================
+// ================= TOGGLE LIKE =================
 
 async function toggleLike(postId){
 
@@ -158,10 +151,9 @@ async function toggleLike(postId){
     .maybeSingle();
 
   if(existing){
-    // Just toggle active state
     await supabase
       .from("likes")
-      .update({ active: !existing.active })
+      .update({active:!existing.active})
       .eq("id",existing.id);
   }else{
     await supabase.from("likes").insert({
@@ -182,24 +174,7 @@ supabase.channel("realtime")
   )
   .on("postgres_changes",
       {event:"*",schema:"public",table:"likes"},
-      async (payload)=>{
-
-        const postId = payload.new?.post_id || payload.old?.post_id;
-        if(!postId) return;
-
-        // Remove only that post
-        const oldDiv = document.querySelector(`[data-id="${postId}"]`);
-        if(oldDiv) oldDiv.remove();
-
-        // Re-render fresh from DB
-        const { data:post } = await supabase
-          .from("posts")
-          .select("*")
-          .eq("id",postId)
-          .single();
-
-        if(post) await renderPost(post);
-      }
+      ()=>loadPosts()
   )
   .subscribe();
 
