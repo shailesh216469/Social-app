@@ -201,31 +201,56 @@ function setupEvents(div,post){
 
 /* LOAD COMMENTS */
 async function loadComments(postId){
-  const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv)return;
 
-  const { data:comments }=await supabase
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
+
+  const { data:comments } = await supabase
     .from("comments")
     .select("*")
-    .eq("post_id",postId)
+    .eq("post_id", postId)
     .order("created_at",{ascending:true});
 
-  const container=postDiv.querySelector(".comments");
+  const container = postDiv.querySelector(".comments");
   container.innerHTML="";
-  comments.forEach(c=>{
-    const el=document.createElement("div");
-    el.className="comment";
 
-    el.innerHTML=`
-      <span>${c.content}</span>
-      ${c.user_id===currentUser.id?
-        `<button class="danger deleteComment" data-id="${c.id}">X</button>`:""}
-    `;
+  comments.forEach(comment => {
 
-    container.appendChild(el);
+    const commentDiv = document.createElement("div");
+    commentDiv.className="comment";
+
+    const textSpan = document.createElement("span");
+    textSpan.innerText = comment.content;
+
+    commentDiv.appendChild(textSpan);
+
+    // ✅ SHOW DELETE BUTTON ONLY FOR OWNER
+    if(comment.user_id === currentUser.id){
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className="danger";
+      deleteBtn.innerText="X";
+
+      deleteBtn.onclick = async () => {
+
+        const { error } = await supabase
+          .from("comments")
+          .delete()
+          .eq("id", comment.id);
+
+        if(error){
+          console.log("DELETE ERROR:", error);
+        }
+      };
+
+      commentDiv.appendChild(deleteBtn);
+    }
+
+    container.appendChild(commentDiv);
   });
 
-  postDiv.querySelector(".toggleComment").innerText=`💬 ${comments.length}`;
+  postDiv.querySelector(".toggleComment").innerText = `💬 ${comments.length}`;
+}
 
   /* DELETE COMMENT EVENT */
   container.querySelectorAll(".deleteComment").forEach(btn=>{
