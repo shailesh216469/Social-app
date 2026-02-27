@@ -1,89 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Ultimate Social App</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+console.log("JS WORKING");
+</script>
 </head>
 <body>
-
-<h2>🔥 Ultimate Social App</h2>
-
-<div id="auth">
-  <button id="googleBtn">Login with Google</button>
-  <button id="guestBtn">Guest Login</button>
-</div>
-
-<div id="app" style="display:none;">
-  <p>Logged in</p>
-  <textarea id="postInput"></textarea><br>
-  <button id="postBtn">Post</button>
-  <div id="posts"></div>
-</div>
-
-<script>
-const supabase = window.supabase.createClient(
-  "https://dgehzagvyrxbnnvgsiff.supabase.co",
-  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
-);
-
-let currentUser = null;
-
-document.getElementById("googleBtn").onclick = async () => {
-  console.log("Google Clicked");
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-  });
-  if (error) console.error(error);
-};
-
-document.getElementById("guestBtn").onclick = async () => {
-  console.log("Guest Clicked");
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) console.error(error);
-};
-
-supabase.auth.onAuthStateChange((event, session) => {
-  console.log("Auth event:", event);
-  if (session) {
-    currentUser = session.user;
-    document.getElementById("auth").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    loadPosts();
-  }
-});
-
-document.getElementById("postBtn").onclick = async () => {
-  const content = document.getElementById("postInput").value;
-  const { error } = await supabase.from("posts").insert({
-    content: content,
-    user_id: currentUser.id
-  });
-  if (error) console.error(error);
-  loadPosts();
-};
-
-async function loadPosts() {
-  const { data, error } = await supabase
-    .from("posts")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  const container = document.getElementById("posts");
-  container.innerHTML = "";
-
-  data.forEach(post => {
-    const div = document.createElement("div");
-    div.innerText = post.content;
-    container.appendChild(div);
-  });
-}
-</script>
-
+Test
 </body>
 </html>
