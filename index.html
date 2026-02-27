@@ -6,6 +6,7 @@
 <style>
 body { font-family: Arial; padding: 20px; }
 .post { border:1px solid #ccc; padding:10px; margin-top:10px; border-radius:6px; }
+.likeBtn { padding:4px 8px; }
 </style>
 </head>
 <body>
@@ -101,41 +102,48 @@ async function loadPosts(){
     .order("created_at",{ascending:false});
 
   feed.innerHTML="";
-
   for(const post of posts){
-
-    const { data:likes } = await supabase
-      .from("likes")
-      .select("*")
-      .eq("post_id",post.id)
-      .eq("active",true);
-
-    const likeCount = likes.length;
-
-    const { data:myLike } = await supabase
-      .from("likes")
-      .select("active")
-      .eq("post_id",post.id)
-      .eq("user_id",currentUser.id)
-      .maybeSingle();
-
-    const isLiked = myLike?.active === true;
-
-    const div = document.createElement("div");
-    div.className="post";
-
-    div.innerHTML = `
-      <p>${post.content}</p>
-      <button>${isLiked?"❤️ Liked":"🤍 Like"}</button>
-      <span>${likeCount} likes</span>
-    `;
-
-    feed.appendChild(div);
-
-    div.querySelector("button").onclick = async ()=>{
-      await toggleLike(post.id);
-    };
+    await renderPost(post);
   }
+}
+
+
+// ================= RENDER ONE POST =================
+
+async function renderPost(post){
+
+  const { data:likes } = await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id",post.id)
+    .eq("active",true);
+
+  const likeCount = likes.length;
+
+  const { data:myLike } = await supabase
+    .from("likes")
+    .select("active")
+    .eq("post_id",post.id)
+    .eq("user_id",currentUser.id)
+    .maybeSingle();
+
+  const isLiked = myLike?.active === true;
+
+  const div = document.createElement("div");
+  div.className="post";
+  div.setAttribute("data-id",post.id);
+
+  div.innerHTML = `
+    <p>${post.content}</p>
+    <button class="likeBtn">${isLiked?"❤️ Liked":"🤍 Like"}</button>
+    <span class="likeCount">${likeCount} likes</span>
+  `;
+
+  feed.appendChild(div);
+
+  div.querySelector(".likeBtn").onclick = async ()=>{
+    await toggleLike(post.id);
+  };
 }
 
 
@@ -169,12 +177,48 @@ async function toggleLike(postId){
 
 supabase.channel("realtime")
   .on("postgres_changes",
-      {event:"*",schema:"public",table:"posts"},
-      ()=>loadPosts()
+      {event:"INSERT",schema:"public",table:"posts"},
+      (payload)=>{
+        renderPost(payload.new);
+      }
   )
   .on("postgres_changes",
       {event:"*",schema:"public",table:"likes"},
-      ()=>loadPosts()
+      async (payload)=>{
+
+        const postId =
+          payload.new?.post_id || payload.old?.post_id;
+
+        if(!postId) return;
+
+        const postDiv = document.querySelector(`[data-id="${postId}"]`);
+        if(!postDiv) return;
+
+        // Update only this post
+
+        const { data:likes } = await supabase
+          .from("likes")
+          .select("*")
+          .eq("post_id",postId)
+          .eq("active",true);
+
+        const likeCount = likes.length;
+
+        postDiv.querySelector(".likeCount").innerText =
+          `${likeCount} likes`;
+
+        const { data:myLike } = await supabase
+          .from("likes")
+          .select("active")
+          .eq("post_id",postId)
+          .eq("user_id",currentUser.id)
+          .maybeSingle();
+
+        const isLiked = myLike?.active === true;
+
+        postDiv.querySelector(".likeBtn").innerText =
+          isLiked ? "❤️ Liked" : "🤍 Like";
+      }
   )
   .subscribe();
 
