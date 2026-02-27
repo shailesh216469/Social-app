@@ -14,22 +14,19 @@
   --subtle:#f0f2f5;
   --like:#e0245e;
 }
-
 .dark{
   --bg:#18191a;
   --card:#242526;
   --text:#e4e6eb;
   --subtle:#3a3b3c;
 }
-
 body{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   background:var(--bg);
   color:var(--text);
   padding:15px;
-  transition: background 0.3s ease, color 0.3s ease;
+  transition: background .3s, color .3s;
 }
-
 .post{
   background:var(--card);
   padding:15px;
@@ -37,7 +34,6 @@ body{
   border-radius:12px;
   box-shadow:0 4px 12px rgba(0,0,0,.08);
 }
-
 button{
   border:none;
   border-radius:8px;
@@ -45,11 +41,9 @@ button{
   cursor:pointer;
   margin-top:5px;
 }
-
 .primary{background:var(--primary);color:white;}
 .danger{background:var(--danger);color:white;}
 .likeBtn.liked{background:var(--like);color:white;}
-
 .comment{
   background:var(--subtle);
   padding:6px;
@@ -57,7 +51,6 @@ button{
   margin-top:5px;
   font-size:14px;
 }
-
 textarea,input{
   width:100%;
   border-radius:8px;
@@ -67,12 +60,15 @@ textarea,input{
   color:var(--text);
   border:1px solid #ccc;
 }
-
 .actionBar{
   display:flex;
   gap:8px;
   margin-top:10px;
   flex-wrap:wrap;
+}
+.editArea{
+  width:100%;
+  margin-top:8px;
 }
 </style>
 </head>
@@ -111,9 +107,8 @@ const supabase = createClient(
 let currentUser=null;
 const feed=document.getElementById("feed");
 
-/* ================= THEME SYSTEM ================= */
+/* ================= THEME ================= */
 
-// Detect saved theme OR system theme
 const savedTheme = localStorage.getItem("theme");
 
 if(savedTheme){
@@ -128,10 +123,9 @@ updateThemeIcon();
 
 themeToggle.onclick=()=>{
   document.body.classList.toggle("dark");
-
-  const isDark=document.body.classList.contains("dark");
-  localStorage.setItem("theme", isDark ? "dark" : "light");
-
+  localStorage.setItem("theme",
+    document.body.classList.contains("dark") ? "dark" : "light"
+  );
   updateThemeIcon();
 };
 
@@ -214,11 +208,12 @@ async function renderPost(post){
   div.dataset.id=post.id;
 
   div.innerHTML=`
-    <p>${post.content}</p>
+    <div class="content">${post.content}</div>
     <div class="actionBar">
       <button class="likeBtn">❤️ 0</button>
       ${post.user_id===currentUser.id?
-        `<button class="danger deletePost">Delete</button>`:""}
+        `<button class="primary editBtn">Edit</button>
+         <button class="danger deletePost">Delete</button>`:""}
       <button class="toggleComment">💬</button>
     </div>
     <div class="commentSection" style="display:none;">
@@ -230,12 +225,46 @@ async function renderPost(post){
 
   feed.prepend(div);
 
+  const contentDiv=div.querySelector(".content");
+
+  /* DELETE */
   if(div.querySelector(".deletePost")){
     div.querySelector(".deletePost").onclick=async()=>{
       await supabase.from("posts").delete().eq("id",post.id);
     };
   }
 
+  /* EDIT */
+  if(div.querySelector(".editBtn")){
+    div.querySelector(".editBtn").onclick=()=>{
+      const currentText=contentDiv.innerText;
+
+      const editBox=document.createElement("textarea");
+      editBox.className="editArea";
+      editBox.value=currentText;
+
+      const saveBtn=document.createElement("button");
+      saveBtn.className="primary";
+      saveBtn.innerText="Save";
+
+      contentDiv.replaceWith(editBox);
+      div.insertBefore(saveBtn, div.querySelector(".actionBar"));
+
+      saveBtn.onclick=async()=>{
+        if(!editBox.value.trim()) return;
+
+        await supabase.from("posts")
+          .update({content:editBox.value})
+          .eq("id",post.id);
+
+        editBox.replaceWith(contentDiv);
+        contentDiv.innerText=editBox.value;
+        saveBtn.remove();
+      };
+    };
+  }
+
+  /* LIKE */
   const likeBtn=div.querySelector(".likeBtn");
 
   likeBtn.onclick=async()=>{
@@ -334,6 +363,13 @@ channel
   payload=>renderPost(payload.new)
 )
 .on("postgres_changes",
+  {event:"UPDATE",schema:"public",table:"posts"},
+  payload=>{
+    const el=document.querySelector(`[data-id="${payload.new.id}"] .content`);
+    if(el) el.innerText=payload.new.content;
+  }
+)
+.on("postgres_changes",
   {event:"DELETE",schema:"public",table:"posts"},
   payload=>{
     const el=document.querySelector(`[data-id="${payload.old.id}"]`);
@@ -354,7 +390,7 @@ channel
     if(postId) loadComments(postId);
   }
 )
-.subscribe(status=>console.log("Realtime:",status));
+.subscribe();
 
 </script>
 </body>
