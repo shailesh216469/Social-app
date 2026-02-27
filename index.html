@@ -14,6 +14,7 @@ button{margin-right:5px;margin-top:5px;}
 .comment-box{margin-top:8px;padding-left:10px;border-left:2px solid #ccc;}
 .comment-input{width:100%;margin-top:5px;}
 .comment-item{margin-bottom:5px;}
+.edit-area{width:100%;margin-top:5px;}
 .liked{background:red;color:white;}
 .not-liked{background:#ddd;}
 </style>
@@ -48,32 +49,30 @@ const supabase = window.supabase.createClient(
 let currentUser = null;
 
 function timeAgo(dateString){
-  const now = new Date();
-  const past = new Date(dateString);
-  const seconds = Math.floor((now - past) / 1000);
-  if(seconds < 60) return "Just now";
-  const minutes = Math.floor(seconds / 60);
-  if(minutes < 60) return minutes + "m ago";
-  const hours = Math.floor(minutes / 60);
-  if(hours < 24) return hours + "h ago";
-  const days = Math.floor(hours / 24);
-  if(days < 7) return days + "d ago";
+  const now=new Date();
+  const past=new Date(dateString);
+  const seconds=Math.floor((now-past)/1000);
+  if(seconds<60) return "Just now";
+  const minutes=Math.floor(seconds/60);
+  if(minutes<60) return minutes+"m ago";
+  const hours=Math.floor(minutes/60);
+  if(hours<24) return hours+"h ago";
+  const days=Math.floor(hours/24);
+  if(days<7) return days+"d ago";
   return past.toLocaleDateString();
 }
 
 async function init(){
   const { data } = await supabase.auth.getUser();
-  currentUser = data.user;
+  currentUser=data.user;
   loadPosts();
   subscribeRealtime();
 }
 
-function toggleDark(){
-  document.body.classList.toggle("dark");
-}
+function toggleDark(){document.body.classList.toggle("dark");}
 
 async function login(){
-  await supabase.auth.signInWithOAuth({ provider:'google' });
+  await supabase.auth.signInWithOAuth({provider:'google'});
 }
 
 async function logout(){
@@ -137,6 +136,26 @@ async function deleteComment(commentId){
   await supabase.from("comments").delete().eq("id",commentId);
 }
 
+function startEditComment(commentId,oldText){
+  const box=document.getElementById("comment-"+commentId);
+
+  box.innerHTML=`
+    <textarea class="edit-area" id="edit-comment-${commentId}">${oldText}</textarea>
+    <br>
+    <button onclick="saveCommentEdit('${commentId}')">Save</button>
+    <button onclick="loadPosts()">Cancel</button>
+  `;
+}
+
+async function saveCommentEdit(commentId){
+  const newText=document.getElementById("edit-comment-"+commentId).value;
+  if(!newText) return;
+
+  await supabase.from("comments")
+    .update({content:newText})
+    .eq("id",commentId);
+}
+
 async function loadComments(postId){
   const { data } = await supabase
     .from("comments")
@@ -150,15 +169,24 @@ async function loadComments(postId){
   data.forEach(c=>{
     const div=document.createElement("div");
     div.className="comment-item";
+    div.id="comment-"+c.id;
+
+    const timeText=c.updated_at && c.updated_at!==c.created_at
+      ? "Edited • "+timeAgo(c.updated_at)
+      : timeAgo(c.created_at);
 
     div.innerHTML=`
       <div class="comment-box">
         <b>${c.username}</b>
-        <span class="small">${timeAgo(c.created_at)}</span>
+        <span class="small">${timeText}</span>
         <br>${c.content}
         ${
           currentUser && currentUser.id===c.user_id
-          ? `<br><button onclick="deleteComment('${c.id}')">Delete</button>`
+          ? `
+            <br>
+            <button onclick="startEditComment('${c.id}','${c.content.replace(/'/g,"\\'")}')">Edit</button>
+            <button onclick="deleteComment('${c.id}')">Delete</button>
+          `
           : ""
         }
       </div>
@@ -213,7 +241,6 @@ async function renderPost(post){
 
 function subscribeRealtime(){
 
-  // POSTS
   supabase.channel("posts-channel")
     .on("postgres_changes",
       {event:"INSERT",schema:"public",table:"posts"},
@@ -221,7 +248,6 @@ function subscribeRealtime(){
     )
     .subscribe();
 
-  // LIKES
   supabase.channel("likes-channel")
     .on("postgres_changes",
       {event:"*",schema:"public",table:"likes"},
@@ -241,12 +267,10 @@ function subscribeRealtime(){
     )
     .subscribe();
 
-  // COMMENTS (FINAL FIXED VERSION)
   supabase.channel("comments-channel")
     .on("postgres_changes",
       {event:"*",schema:"public",table:"comments"},
       payload=>{
-        // reload comments for all posts
         document.querySelectorAll(".post").forEach(post=>{
           const postId=post.id.replace("post-","");
           loadComments(postId);
@@ -259,6 +283,8 @@ function subscribeRealtime(){
 window.toggleLike=toggleLike;
 window.addComment=addComment;
 window.deleteComment=deleteComment;
+window.startEditComment=startEditComment;
+window.saveCommentEdit=saveCommentEdit;
 
 document.getElementById("darkBtn").onclick=toggleDark;
 document.getElementById("loginBtn").onclick=login;
