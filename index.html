@@ -219,14 +219,27 @@ function attachLikeEvents() {
 
 // ================= REALTIME UPDATE =================
 
-supabase
-  .channel("posts-realtime")
-  .on(
-    "postgres_changes",
-    { event: "*", schema: "public", table: "posts" },
-    () => loadPosts()
-  )
-  .subscribe();
+const channel = supabase.channel("realtime-updates");
+
+// Listen to post changes
+channel.on(
+  "postgres_changes",
+  { event: "*", schema: "public", table: "posts" },
+  () => {
+    loadPosts();
+  }
+);
+
+// Listen to like changes
+channel.on(
+  "postgres_changes",
+  { event: "*", schema: "public", table: "likes" },
+  () => {
+    loadPosts();
+  }
+);
+
+channel.subscribe();
 
 </script>
 
