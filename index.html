@@ -1,15 +1,29 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Test</title>
+<meta charset="UTF-8">
+<title>Ultimate Social App</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body { font-family: sans-serif; padding:20px; }
+.dark { background:#111; color:white; }
+</style>
 </head>
 <body>
 
-<button id="themeToggle">Toggle Dark</button>
+<button id="themeToggle">Dark Mode</button>
+<h2>Test App</h2>
 
 <script>
-document.getElementById("themeToggle").onclick = function() {
-  document.body.style.background = "black";
+const supabase = window.supabase.createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
+
+document.getElementById("themeToggle").onclick = () => {
+  document.body.classList.toggle("dark");
 };
 </script>
 
