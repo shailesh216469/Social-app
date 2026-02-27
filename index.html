@@ -13,7 +13,6 @@ body{font-family:Arial;padding:20px;background:#f4f4f4;transition:0.3s;}
 .liked{background:red;color:white;}
 .not-liked{background:#ddd;}
 button{margin-right:5px;margin-top:5px;}
-.edit-area{width:100%;margin-top:5px;}
 .small{font-size:12px;opacity:0.7;}
 .comment-box{margin-top:8px;padding-left:10px;border-left:2px solid #ccc;}
 .comment-input{width:100%;margin-top:5px;}
@@ -214,14 +213,19 @@ async function renderPost(post){
 function subscribeRealtime(){
 
   supabase.channel("posts-channel")
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"posts"},
+    .on("postgres_changes",
+      {event:"INSERT",schema:"public",table:"posts"},
       payload=>renderPost(payload.new)
-    ).subscribe();
+    )
+    .subscribe();
 
   supabase.channel("likes-channel")
-    .on("postgres_changes",{event:"*",schema:"public",table:"likes"},
+    .on("postgres_changes",
+      {event:"*",schema:"public",table:"likes"},
       async payload=>{
         const postId=payload.new?.post_id||payload.old?.post_id;
+        if(!postId) return;
+
         const { count } = await supabase
           .from("likes")
           .select("*",{count:"exact",head:true})
@@ -231,15 +235,19 @@ function subscribeRealtime(){
         const el=document.getElementById("like-count-"+postId);
         if(el) el.textContent=count||0;
       }
-    ).subscribe();
+    )
+    .subscribe();
 
   supabase.channel("comments-channel")
-    .on("postgres_changes",{event:"*",schema:"public",table:"comments"},
-      payload=>{
-        const postId = payload.new?.post_id || payload.old?.post_id;
-        loadComments(postId);
-      }
-    ).subscribe();
+    .on("postgres_changes",
+      {event:"INSERT",schema:"public",table:"comments"},
+      payload=>loadComments(payload.new.post_id)
+    )
+    .on("postgres_changes",
+      {event:"DELETE",schema:"public",table:"comments"},
+      payload=>loadComments(payload.old.post_id)
+    )
+    .subscribe();
 }
 
 window.toggleLike=toggleLike;
