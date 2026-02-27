@@ -34,6 +34,11 @@ body{
   border-radius:12px;
   box-shadow:0 4px 12px rgba(0,0,0,.08);
 }
+.userLine{
+  font-size:13px;
+  opacity:.7;
+  margin-bottom:6px;
+}
 button{
   border:none;
   border-radius:8px;
@@ -127,7 +132,6 @@ if(savedTheme){
   document.body.classList.add("dark");
 }
 updateThemeIcon();
-
 themeToggle.onclick=()=>{
   document.body.classList.toggle("dark");
   localStorage.setItem("theme",
@@ -186,6 +190,15 @@ async function loadPosts(){
   posts.forEach(p=>renderPost(p));
 }
 
+/* FORMAT TIME */
+function timeAgo(dateString){
+  const diff=Math.floor((Date.now()-new Date(dateString))/1000);
+  if(diff<60) return "just now";
+  if(diff<3600) return Math.floor(diff/60)+"m ago";
+  if(diff<86400) return Math.floor(diff/3600)+"h ago";
+  return Math.floor(diff/86400)+"d ago";
+}
+
 /* RENDER POST */
 async function renderPost(post){
   if(document.querySelector(`[data-id="${post.id}"]`))return;
@@ -194,7 +207,14 @@ async function renderPost(post){
   div.className="post";
   div.dataset.id=post.id;
 
+  const username=post.user_id===currentUser.id
+    ? (currentUser.email||"You")
+    : post.user_id.slice(0,6)+"...";
+
   div.innerHTML=`
+    <div class="userLine">
+      👤 ${username} • ${timeAgo(post.created_at)}
+    </div>
     <div class="content">${post.content}</div>
     <div class="actionBar">
       <button class="likeBtn">❤️ 0</button>
@@ -209,6 +229,7 @@ async function renderPost(post){
       <button class="sendComment primary">Send</button>
     </div>
   `;
+
   feed.prepend(div);
 
   const contentDiv=div.querySelector(".content");
@@ -251,7 +272,6 @@ async function renderPost(post){
       .eq("post_id",post.id)
       .eq("user_id",currentUser.id)
       .maybeSingle();
-
     if(existing){
       await supabase.from("likes")
         .update({active:!existing.active})
@@ -263,12 +283,10 @@ async function renderPost(post){
         active:true
       });
     }
-
     likeBtn.classList.add("animate");
     setTimeout(()=>likeBtn.classList.remove("animate"),300);
   };
 
-  /* COMMENTS */
   div.querySelector(".toggleComment").onclick=()=>{
     const sec=div.querySelector(".commentSection");
     sec.style.display=sec.style.display==="none"?"block":"none";
