@@ -2,45 +2,157 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Test App</title>
+<title>Ultimate Social App</title>
+
+<!-- Correct browser build -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
 <style>
-body { font-family: Arial; padding:20px; transition:0.3s; }
-.dark { background:black; color:white; }
+body{
+  font-family: Arial;
+  padding:20px;
+  background:#f4f4f4;
+  transition:0.3s;
+}
+.dark{
+  background:#111;
+  color:white;
+}
+.post{
+  background:white;
+  padding:15px;
+  margin-top:15px;
+  border-radius:8px;
+}
+.dark .post{
+  background:#1e1e1e;
+}
 </style>
 </head>
 <body>
 
-<button onclick="toggleDark()">Dark Mode</button>
-<br><br>
+<button onclick="toggleDark()">🌙 Dark Mode</button>
 
-<button onclick="login()">Login</button>
+<h2>🔥 Ultimate Social App</h2>
+
+<button onclick="login()">Login with Google</button>
 <button onclick="logout()">Logout</button>
-<br><br>
 
-<textarea id="postInput"></textarea>
+<hr>
+
+<textarea id="postInput" placeholder="Write something..."></textarea>
 <br><br>
 <button onclick="createPost()">Post</button>
 
+<div id="posts"></div>
+
 <script>
+
+const supabase = window.supabase.createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
+
+let currentUser = null;
+
+async function init(){
+  const { data } = await supabase.auth.getUser();
+  currentUser = data.user;
+  loadPosts();
+}
 
 function toggleDark(){
   document.body.classList.toggle("dark");
-  console.log("Dark toggled");
 }
 
-function login(){
-  console.log("Login clicked");
+async function login(){
+  await supabase.auth.signInWithOAuth({
+    provider: 'google'
+  });
 }
 
-function logout(){
-  console.log("Logout clicked");
+async function logout(){
+  await supabase.auth.signOut();
+  location.reload();
 }
 
-function createPost(){
-  console.log("Post clicked");
+async function createPost(){
+  if(!currentUser){
+    alert("Login first");
+    return;
+  }
+
+  const content = document.getElementById("postInput").value;
+  if(!content) return;
+
+  await supabase.from("posts").insert([{
+    content: content,
+    user_id: currentUser.id,
+    username: currentUser.email
+  }]);
+
+  document.getElementById("postInput").value="";
+  loadPosts();
 }
 
-console.log("JS LOADED SUCCESSFULLY");
+async function deletePost(id){
+  await supabase.from("posts").delete().eq("id", id);
+  loadPosts();
+}
+
+async function likePost(id){
+  if(!currentUser){
+    alert("Login first");
+    return;
+  }
+
+  await supabase.from("likes").insert([{
+    post_id:id,
+    user_id:currentUser.id
+  }]);
+
+  loadPosts();
+}
+
+async function loadPosts(){
+
+  const { data:posts } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at",{ascending:false});
+
+  const container = document.getElementById("posts");
+  container.innerHTML="";
+
+  if(!posts) return;
+
+  for(const post of posts){
+
+    const { count } = await supabase
+      .from("likes")
+      .select("*",{count:"exact",head:true})
+      .eq("post_id",post.id);
+
+    const div = document.createElement("div");
+    div.className="post";
+    div.innerHTML=`
+      <b>${post.username || "User"}</b><br>
+      ${post.content}
+      <br><br>
+      ❤️ ${count || 0}
+      <br><br>
+      <button onclick="likePost('${post.id}')">Like</button>
+      ${
+        currentUser && currentUser.id===post.user_id
+        ? `<button onclick="deletePost('${post.id}')">Delete</button>`
+        : ""
+      }
+    `;
+    container.appendChild(div);
+  }
+}
+
+init();
 
 </script>
 
