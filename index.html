@@ -5,16 +5,19 @@
   <title>Ultimate Social App</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
+
 <body>
 
 <h1 style="color:red;">VERSION 2</h1>
+
 <h2>🔥 Ultimate Social App</h2>
 
 <button id="googleBtn">Login with Google</button>
 <button id="guestBtn">Guest Login</button>
 
+<!-- 👇 SCRIPT AT BOTTOM -->
 <script>
-console.log("SCRIPT STARTED");
+console.log("SCRIPT RUNNING");
 
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
@@ -22,16 +25,15 @@ const supabase = window.supabase.createClient(
 );
 
 document.getElementById("googleBtn").addEventListener("click", async () => {
-  console.log("Google button clicked");
+  console.log("Google clicked");
   await supabase.auth.signInWithOAuth({
     provider: "google"
   });
 });
 
 document.getElementById("guestBtn").addEventListener("click", async () => {
-  console.log("Guest button clicked");
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) console.error(error);
+  console.log("Guest clicked");
+  await supabase.auth.signInAnonymously();
 });
 </script>
 
