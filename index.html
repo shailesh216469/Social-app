@@ -2,46 +2,369 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>JS Test</title>
+<title>Ultimate Social App</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
-body {
-  font-family: sans-serif;
-  padding: 30px;
-  transition: 0.3s;
+:root{
+  --bg:#f0f2f5;
+  --card:#fff;
+  --text:#111;
+  --primary:#1877f2;
+  --danger:#ff4d4f;
+  --subtle:#f0f2f5;
+  --like:#e0245e;
 }
-
-.dark {
-  background: black;
-  color: white;
+.dark{
+  --bg:#18191a;
+  --card:#242526;
+  --text:#e4e6eb;
+  --subtle:#3a3b3c;
 }
-
-button {
-  padding: 10px 15px;
-  margin: 10px 0;
-  cursor: pointer;
+body{
+  font-family:sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  padding:15px;
+  transition:.3s;
+}
+.post{
+  background:var(--card);
+  padding:15px;
+  margin-top:15px;
+  border-radius:12px;
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+.userLine{
+  font-size:13px;
+  opacity:.7;
+  margin-bottom:6px;
+}
+button{
+  border:none;
+  border-radius:8px;
+  padding:6px 12px;
+  cursor:pointer;
+  margin-top:5px;
+}
+.primary{background:var(--primary);color:white;}
+.danger{background:var(--danger);color:white;}
+.likeBtn.liked{background:var(--like);color:white;}
+.comment{
+  background:var(--subtle);
+  padding:6px;
+  border-radius:6px;
+  margin-top:5px;
+}
+textarea,input{
+  width:100%;
+  padding:6px;
+  border-radius:8px;
+  margin-top:5px;
+}
+.badge{
+  background:var(--primary);
+  color:white;
+  padding:2px 6px;
+  border-radius:12px;
+  font-size:12px;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🔥 JavaScript Test Page</h2>
+<button id="themeToggle">🌙</button>
+<hr>
+<h2>🔥 Ultimate Social App</h2>
 
-<button id="darkBtn">Toggle Dark Mode</button>
-<button id="alertBtn">Show Alert</button>
+<div id="auth">
+  <button id="google" class="primary">Login with Google</button>
+  <button id="guest" class="primary">Guest Login</button>
+</div>
+
+<div id="app" style="display:none;">
+  <p id="user"></p>
+  <button id="logout" class="danger">Logout</button>
+  <hr>
+
+  <textarea id="text" rows="3" placeholder="Write something..."></textarea>
+  <button id="post" class="primary">Post</button>
+
+  <hr>
+  <div id="feed"></div>
+</div>
 
 <script>
-console.log("Script is running ✅");
+const supabase = window.supabase.createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
 
-document.getElementById("darkBtn").addEventListener("click", function() {
-  console.log("Dark button clicked");
+let currentUser = null;
+const feed = document.getElementById("feed");
+
+/* DARK MODE */
+if(localStorage.getItem("theme")==="dark"){
+  document.body.classList.add("dark");
+}
+document.getElementById("themeToggle").onclick = () => {
   document.body.classList.toggle("dark");
+  localStorage.setItem("theme",
+    document.body.classList.contains("dark")?"dark":"light");
+};
+
+/* AUTH */
+supabase.auth.getSession().then(({data})=>{
+  if(data.session){
+    currentUser = data.session.user;
+    startApp();
+  }
 });
 
-document.getElementById("alertBtn").addEventListener("click", function() {
-  alert("JavaScript is working 🚀");
+supabase.auth.onAuthStateChange((event, session)=>{
+  if(session){
+    currentUser = session.user;
+    startApp();
+  }
 });
+
+google.onclick = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin }
+  });
+};
+
+guest.onclick = async () => {
+  await supabase.auth.signInAnonymously();
+};
+
+logout.onclick = async () => {
+  await supabase.auth.signOut();
+  location.reload();
+};
+
+function startApp(){
+  auth.style.display="none";
+  app.style.display="block";
+  user.innerText="Logged in as: "+(currentUser.email || "Guest");
+  loadPosts();
+}
+
+/* CREATE POST */
+post.onclick = async () => {
+  if(!text.value.trim()) return;
+
+  await supabase.from("posts").insert({
+    content: text.value,
+    user_id: currentUser.id,
+    username: currentUser.email || "Guest"
+  });
+
+  text.value="";
+};
+
+/* LOAD POSTS */
+async function loadPosts(){
+  const { data } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at",{ascending:false});
+
+  feed.innerHTML="";
+  data.forEach(renderPost);
+}
+
+/* FORMAT TIME */
+function formatTime(p){
+  if(p.updated_at && p.updated_at!==p.created_at){
+    return "Edited • "+new Date(p.updated_at).toLocaleString();
+  }
+  return new Date(p.created_at).toLocaleString();
+}
+
+/* RENDER POST */
+function renderPost(post){
+
+  if(document.querySelector(`[data-id="${post.id}"]`)) return;
+
+  const div=document.createElement("div");
+  div.className="post";
+  div.dataset.id=post.id;
+
+  div.innerHTML=`
+    <div class="userLine">
+      👤 ${post.username} • <span class="time">${formatTime(post)}</span>
+    </div>
+    <div class="content">${post.content}</div>
+    <div>
+      <button class="likeBtn">❤️ 0</button>
+      <button class="commentToggle">💬 <span class="badge">0</span></button>
+      ${post.user_id===currentUser.id?
+        `<button class="editBtn primary">Edit</button>
+         <button class="deleteBtn danger">Delete</button>`:""}
+    </div>
+    <div class="commentBox" style="display:none;">
+      <div class="comments"></div>
+      <input class="commentInput" placeholder="Write comment...">
+      <button class="sendComment primary">Send</button>
+    </div>
+  `;
+
+  feed.prepend(div);
+
+  /* DELETE */
+  div.querySelector(".deleteBtn")?.onclick = async ()=>{
+    await supabase.from("posts").delete().eq("id",post.id);
+  };
+
+  /* INLINE EDIT */
+  div.querySelector(".editBtn")?.onclick = ()=>{
+    const contentDiv = div.querySelector(".content");
+    const oldText = contentDiv.innerText;
+
+    contentDiv.innerHTML = `
+      <textarea class="editArea">${oldText}</textarea>
+      <button class="saveEdit primary">Save</button>
+      <button class="cancelEdit danger">Cancel</button>
+    `;
+
+    div.querySelector(".cancelEdit").onclick = ()=>{
+      contentDiv.innerText = oldText;
+    };
+
+    div.querySelector(".saveEdit").onclick = async ()=>{
+      const newText = div.querySelector(".editArea").value;
+      if(!newText.trim()) return;
+
+      await supabase.from("posts")
+        .update({
+          content:newText,
+          updated_at:new Date().toISOString()
+        })
+        .eq("id",post.id);
+    };
+  };
+
+  /* LIKE */
+  div.querySelector(".likeBtn").onclick = async ()=>{
+    const { data:existing } = await supabase
+      .from("likes")
+      .select("*")
+      .eq("post_id",post.id)
+      .eq("user_id",currentUser.id)
+      .maybeSingle();
+
+    if(existing){
+      await supabase.from("likes")
+        .update({active:!existing.active})
+        .eq("id",existing.id);
+    }else{
+      await supabase.from("likes").insert({
+        post_id:post.id,
+        user_id:currentUser.id,
+        active:true
+      });
+    }
+  };
+
+  /* COMMENTS */
+  div.querySelector(".commentToggle").onclick = ()=>{
+    const box = div.querySelector(".commentBox");
+    box.style.display = box.style.display==="none"?"block":"none";
+  };
+
+  div.querySelector(".sendComment").onclick = async ()=>{
+    const input = div.querySelector(".commentInput");
+    if(!input.value.trim()) return;
+
+    await supabase.from("comments").insert({
+      post_id:post.id,
+      user_id:currentUser.id,
+      username:currentUser.email||"Guest",
+      content:input.value
+    });
+
+    input.value="";
+  };
+
+  updateLikes(post.id);
+  updateComments(post.id);
+}
+
+/* UPDATE LIKES */
+async function updateLikes(postId){
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
+
+  const { data } = await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id",postId)
+    .eq("active",true);
+
+  const btn=postDiv.querySelector(".likeBtn");
+  btn.innerText=`❤️ ${data.length}`;
+  btn.classList.toggle(
+    "liked",
+    data.some(l=>l.user_id===currentUser.id)
+  );
+}
+
+/* UPDATE COMMENTS */
+async function updateComments(postId){
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
+
+  const { data } = await supabase
+    .from("comments")
+    .select("*")
+    .eq("post_id",postId)
+    .order("created_at",{ascending:true});
+
+  const container=postDiv.querySelector(".comments");
+  container.innerHTML="";
+  data.forEach(c=>{
+    const el=document.createElement("div");
+    el.className="comment";
+    el.innerHTML=`<b>${c.username}</b><br>${c.content}`;
+    container.appendChild(el);
+  });
+
+  postDiv.querySelector(".badge").innerText=data.length;
+}
+
+/* REALTIME */
+supabase.channel("live")
+.on("postgres_changes",{event:"*",schema:"public",table:"posts"},
+  payload=>{
+    if(payload.eventType==="INSERT") renderPost(payload.new);
+    if(payload.eventType==="DELETE"){
+      const el=document.querySelector(`[data-id="${payload.old.id}"]`);
+      if(el) el.remove();
+    }
+    if(payload.eventType==="UPDATE"){
+      const el=document.querySelector(`[data-id="${payload.new.id}"]`);
+      if(el){
+        el.querySelector(".content").innerText=payload.new.content;
+        el.querySelector(".time").innerText=
+          "Edited • "+new Date(payload.new.updated_at).toLocaleString();
+      }
+    }
+  })
+.on("postgres_changes",{event:"*",schema:"public",table:"likes"},
+  payload=>{
+    const id=payload.new?.post_id||payload.old?.post_id;
+    if(id) updateLikes(id);
+  })
+.on("postgres_changes",{event:"*",schema:"public",table:"comments"},
+  payload=>{
+    const id=payload.new?.post_id||payload.old?.post_id;
+    if(id) updateComments(id);
+  })
+.subscribe();
 </script>
 
 </body>
