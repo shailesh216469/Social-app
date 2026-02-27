@@ -132,20 +132,6 @@ async function loadPosts() {
 }
 
 
-// ================= RENDER POSTS =================
-
-async function renderPosts(posts) {
-  postsContainer.innerHTML = "";
-
-  for (let post of posts) {
-    const element = await buildPostElement(post);
-    postsContainer.appendChild(element);
-  }
-
-  attachLikeEvents();
-}
-
-
 // ================= BUILD POST =================
 
 async function buildPostElement(post) {
@@ -177,6 +163,20 @@ async function buildPostElement(post) {
 }
 
 
+// ================= RENDER POSTS =================
+
+async function renderPosts(posts) {
+  postsContainer.innerHTML = "";
+
+  for (let post of posts) {
+    const element = await buildPostElement(post);
+    postsContainer.appendChild(element);
+  }
+
+  attachLikeEvents();
+}
+
+
 // ================= LIKE TOGGLE =================
 
 function attachLikeEvents() {
@@ -192,14 +192,12 @@ function attachLikeEvents() {
         .eq("user_id", currentUser.id);
 
       if (existing && existing.length > 0) {
-        // Unlike
         await supabase
           .from("likes")
           .delete()
           .eq("post_id", postId)
           .eq("user_id", currentUser.id);
       } else {
-        // Like
         await supabase
           .from("likes")
           .insert({
@@ -213,11 +211,11 @@ function attachLikeEvents() {
 }
 
 
-// ================= SMART REALTIME =================
+// ================= REALTIME =================
 
-const channel = supabase.channel("smart-realtime");
+const channel = supabase.channel("realtime-social");
 
-// 🔹 New Post
+// New Posts
 channel.on(
   "postgres_changes",
   { event: "INSERT", schema: "public", table: "posts" },
@@ -228,17 +226,27 @@ channel.on(
   }
 );
 
-// 🔹 Like / Unlike
+// Like / Unlike
 channel.on(
   "postgres_changes",
   { event: "*", schema: "public", table: "likes" },
   async (payload) => {
 
-    // Handle INSERT and DELETE correctly
-    const postId =
-      payload.eventType === "DELETE"
-        ? payload.old.post_id
-        : payload.new.post_id;
+    console.log("Realtime event:", payload);
+
+    const eventType = payload.eventType;
+
+    let postId = null;
+
+    if (eventType === "INSERT") {
+      postId = payload.new.post_id;
+    }
+
+    if (eventType === "DELETE") {
+      postId = payload.old.post_id;
+    }
+
+    if (!postId) return;
 
     const postElement = document.querySelector(
       `[data-post="${postId}"]`
