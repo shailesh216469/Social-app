@@ -185,20 +185,29 @@ function attachLikeEvents() {
 
       const postId = button.dataset.id;
 
-      const { error } = await supabase
+      // Check if already liked
+      const { data: existing } = await supabase
         .from("likes")
-        .insert({
-          post_id: postId,
-          user_id: currentUser.id
-        });
+        .select("id")
+        .eq("post_id", postId)
+        .eq("user_id", currentUser.id);
 
-      if (error) {
-        if (error.message.includes("duplicate")) {
-          alert("You already liked this post");
-        } else {
-          alert(error.message);
-        }
-        return;
+      if (existing && existing.length > 0) {
+        // 🔴 UNLIKE (delete)
+        await supabase
+          .from("likes")
+          .delete()
+          .eq("post_id", postId)
+          .eq("user_id", currentUser.id);
+
+      } else {
+        // 🟢 LIKE (insert)
+        await supabase
+          .from("likes")
+          .insert({
+            post_id: postId,
+            user_id: currentUser.id
+          });
       }
 
       loadPosts();
