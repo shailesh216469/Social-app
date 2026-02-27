@@ -5,50 +5,18 @@
 <title>Ultimate Social App</title>
 
 <style>
-body{
-  font-family: Arial;
-  padding:20px;
-  background:#f4f4f4;
-  transition:0.3s;
-}
-.dark{
-  background:#111;
-  color:white;
-}
-.post{
-  background:white;
-  padding:15px;
-  margin-top:15px;
-  border-radius:8px;
-}
-.dark .post{
-  background:#1e1e1e;
-}
-.like-btn{
-  cursor:pointer;
-  padding:5px 10px;
-  border-radius:5px;
-  border:none;
-}
-.liked{
-  background:red;
-  color:white;
-}
-.not-liked{
-  background:#ddd;
-}
-button{
-  margin-right:5px;
-  margin-top:5px;
-}
-.edit-area{
-  width:100%;
-  margin-top:5px;
-}
-.small{
-  font-size:12px;
-  opacity:0.7;
-}
+body{font-family:Arial;padding:20px;background:#f4f4f4;transition:0.3s;}
+.dark{background:#111;color:white;}
+.post{background:white;padding:15px;margin-top:15px;border-radius:8px;}
+.dark .post{background:#1e1e1e;}
+.like-btn{cursor:pointer;padding:5px 10px;border-radius:5px;border:none;}
+.liked{background:red;color:white;}
+.not-liked{background:#ddd;}
+button{margin-right:5px;margin-top:5px;}
+.edit-area{width:100%;margin-top:5px;}
+.small{font-size:12px;opacity:0.7;}
+.comment-box{margin-top:10px;padding-left:10px;border-left:2px solid #ccc;}
+.comment-input{width:100%;margin-top:5px;}
 </style>
 </head>
 <body>
@@ -81,27 +49,17 @@ const supabase = window.supabase.createClient(
 let currentUser = null;
 
 function timeAgo(dateString){
-
   const now = new Date();
   const past = new Date(dateString);
   const seconds = Math.floor((now - past) / 1000);
-
   if(seconds < 60) return "Just now";
-
   const minutes = Math.floor(seconds / 60);
   if(minutes < 60) return minutes + "m ago";
-
   const hours = Math.floor(minutes / 60);
   if(hours < 24) return hours + "h ago";
-
   const days = Math.floor(hours / 24);
   if(days < 7) return days + "d ago";
-
-  return past.toLocaleDateString(undefined,{
-    day:"2-digit",
-    month:"short",
-    year:"numeric"
-  });
+  return past.toLocaleDateString();
 }
 
 async function init(){
@@ -111,9 +69,7 @@ async function init(){
   subscribeRealtime();
 }
 
-function toggleDark(){
-  document.body.classList.toggle("dark");
-}
+function toggleDark(){document.body.classList.toggle("dark");}
 
 async function login(){
   await supabase.auth.signInWithOAuth({ provider: 'google' });
@@ -125,16 +81,12 @@ async function logout(){
 }
 
 async function createPost(){
-  if(!currentUser){
-    alert("Login first");
-    return;
-  }
-
+  if(!currentUser) return alert("Login first");
   const content = document.getElementById("postInput").value;
   if(!content) return;
 
   await supabase.from("posts").insert([{
-    content: content,
+    content,
     user_id: currentUser.id,
     username: currentUser.email
   }]);
@@ -142,16 +94,8 @@ async function createPost(){
   document.getElementById("postInput").value="";
 }
 
-async function deletePost(id){
-  await supabase.from("posts").delete().eq("id", id);
-}
-
 async function toggleLike(postId){
-
-  if(!currentUser){
-    alert("Login first");
-    return;
-  }
+  if(!currentUser) return alert("Login first");
 
   const { data } = await supabase
     .from("likes")
@@ -161,19 +105,48 @@ async function toggleLike(postId){
     .maybeSingle();
 
   if(data){
-    await supabase
-      .from("likes")
+    await supabase.from("likes")
       .update({ active: !data.active })
       .eq("id", data.id);
   } else {
-    await supabase
-      .from("likes")
-      .insert([{
-        post_id: postId,
-        user_id: currentUser.id,
-        active: true
-      }]);
+    await supabase.from("likes")
+      .insert([{ post_id: postId, user_id: currentUser.id, active:true }]);
   }
+}
+
+async function addComment(postId){
+  if(!currentUser) return alert("Login first");
+
+  const input = document.getElementById("comment-input-"+postId);
+  const text = input.value;
+  if(!text) return;
+
+  await supabase.from("comments").insert([{
+    post_id: postId,
+    user_id: currentUser.id,
+    username: currentUser.email,
+    content: text
+  }]);
+
+  input.value="";
+}
+
+async function loadComments(postId){
+  const { data } = await supabase
+    .from("comments")
+    .select("*")
+    .eq("post_id",postId)
+    .order("created_at",{ascending:true});
+
+  const container = document.getElementById("comments-"+postId);
+  container.innerHTML="";
+
+  data.forEach(c=>{
+    const div=document.createElement("div");
+    div.className="comment-box";
+    div.innerHTML=`<b>${c.username}</b> - <span class="small">${timeAgo(c.created_at)}</span><br>${c.content}`;
+    container.appendChild(div);
+  });
 }
 
 async function loadPosts(){
@@ -183,7 +156,6 @@ async function loadPosts(){
     .order("created_at",{ascending:false});
 
   document.getElementById("posts").innerHTML="";
-
   for(const post of posts){
     renderPost(post);
   }
@@ -197,190 +169,68 @@ async function renderPost(post){
     .eq("post_id",post.id)
     .eq("active",true);
 
-  let liked = false;
-
-  if(currentUser){
-    const { data } = await supabase
-      .from("likes")
-      .select("*")
-      .eq("post_id",post.id)
-      .eq("user_id",currentUser.id)
-      .eq("active",true)
-      .maybeSingle();
-
-    if(data) liked = true;
-  }
-
-  if(document.getElementById("post-"+post.id)) return;
-
-  const timeText =
-    post.updated_at && post.updated_at !== post.created_at
-      ? "Edited • " + timeAgo(post.updated_at)
-      : timeAgo(post.created_at);
-
-  const div = document.createElement("div");
+  const div=document.createElement("div");
   div.className="post";
   div.id="post-"+post.id;
 
-  div.dataset.created = post.created_at;
-  div.dataset.updated = post.updated_at;
-
   div.innerHTML=`
-    <b>${post.username || "User"}</b>
-    <div class="small">${timeText}</div>
-    <div class="content">${post.content}</div>
+    <b>${post.username}</b>
+    <div class="small">${timeAgo(post.created_at)}</div>
+    <div>${post.content}</div>
 
+    ❤️ <span id="like-count-${post.id}">${count||0}</span>
     <br>
-    ❤️ <span id="like-count-${post.id}">${count || 0}</span>
-    <br><br>
+    <button onclick="toggleLike('${post.id}')">Like</button>
 
-    <button 
-      class="like-btn ${liked ? "liked" : "not-liked"}"
-      onclick="toggleLike('${post.id}')"
-      id="like-btn-${post.id}"
-    >
-      ${liked ? "Unlike" : "Like"}
-    </button>
+    <div id="comments-${post.id}"></div>
 
-    ${
-      currentUser && currentUser.id===post.user_id
-      ? `
-        <button onclick="startEdit('${post.id}')">Edit</button>
-        <button onclick="deletePost('${post.id}')">Delete</button>
-      `
-      : ""
-    }
-
-    <div id="edit-box-${post.id}"></div>
+    <textarea id="comment-input-${post.id}" class="comment-input" placeholder="Write comment..."></textarea>
+    <button onclick="addComment('${post.id}')">Comment</button>
   `;
 
-  document.getElementById("posts").prepend(div);
-}
-
-function startEdit(postId){
-
-  const contentDiv = document.querySelector("#post-"+postId+" .content");
-  const oldText = contentDiv.innerText;
-
-  const editBox = document.getElementById("edit-box-"+postId);
-
-  editBox.innerHTML = `
-    <textarea class="edit-area" id="edit-input-${postId}">${oldText}</textarea>
-    <button onclick="saveEdit('${postId}')">Save</button>
-    <button onclick="cancelEdit('${postId}')">Cancel</button>
-  `;
-}
-
-function cancelEdit(postId){
-  document.getElementById("edit-box-"+postId).innerHTML="";
-}
-
-async function saveEdit(postId){
-
-  const newText = document.getElementById("edit-input-"+postId).value;
-  if(!newText) return;
-
-  await supabase
-    .from("posts")
-    .update({ content: newText })
-    .eq("id", postId);
-
-  document.getElementById("edit-box-"+postId).innerHTML="";
-}
-
-function removePost(id){
-  const el = document.getElementById("post-"+id);
-  if(el) el.remove();
+  document.getElementById("posts").appendChild(div);
+  loadComments(post.id);
 }
 
 function subscribeRealtime(){
 
-  supabase
-    .channel("posts-channel")
-    .on("postgres_changes",
-      { event: "*", schema: "public", table: "posts" },
-      payload => {
+  supabase.channel("posts-channel")
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"posts"},
+      payload=>renderPost(payload.new)
+    ).subscribe();
 
-        if(payload.eventType === "INSERT"){
-          renderPost(payload.new);
-        }
-
-        if(payload.eventType === "DELETE"){
-          removePost(payload.old.id);
-        }
-
-        if(payload.eventType === "UPDATE"){
-          const postDiv = document.getElementById("post-"+payload.new.id);
-          if(postDiv){
-            postDiv.querySelector(".content").innerText = payload.new.content;
-
-            postDiv.dataset.updated = payload.new.updated_at;
-
-            postDiv.querySelector(".small").innerText =
-              "Edited • " + timeAgo(payload.new.updated_at);
-          }
-        }
-      }
-    )
-    .subscribe();
-
-  supabase
-    .channel("likes-channel")
-    .on("postgres_changes",
-      { event: "*", schema: "public", table: "likes" },
-      async payload => {
-
-        const postId = payload.new?.post_id || payload.old?.post_id;
-        if(!postId) return;
-
+  supabase.channel("likes-channel")
+    .on("postgres_changes",{event:"*",schema:"public",table:"likes"},
+      async payload=>{
+        const postId=payload.new?.post_id||payload.old?.post_id;
         const { count } = await supabase
           .from("likes")
           .select("*",{count:"exact",head:true})
           .eq("post_id",postId)
           .eq("active",true);
 
-        const countEl = document.getElementById("like-count-"+postId);
-        if(countEl) countEl.textContent = count || 0;
+        const el=document.getElementById("like-count-"+postId);
+        if(el) el.textContent=count||0;
       }
-    )
-    .subscribe();
+    ).subscribe();
+
+  supabase.channel("comments-channel")
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments"},
+      payload=>loadComments(payload.new.post_id)
+    ).subscribe();
 }
 
-setInterval(() => {
+window.toggleLike=toggleLike;
+window.addComment=addComment;
 
-  const posts = document.querySelectorAll(".post");
-
-  posts.forEach(post => {
-
-    const created = post.dataset.created;
-    const updated = post.dataset.updated;
-    const timeDiv = post.querySelector(".small");
-
-    if(updated && updated !== created){
-      timeDiv.innerText = "Edited • " + timeAgo(updated);
-    }else{
-      timeDiv.innerText = timeAgo(created);
-    }
-
-  });
-
-}, 30000);
-
-document.getElementById("darkBtn").onclick = toggleDark;
-document.getElementById("loginBtn").onclick = login;
-document.getElementById("logoutBtn").onclick = logout;
-document.getElementById("postBtn").onclick = createPost;
-
-window.toggleLike = toggleLike;
-window.deletePost = deletePost;
-window.startEdit = startEdit;
-window.saveEdit = saveEdit;
-window.cancelEdit = cancelEdit;
+document.getElementById("darkBtn").onclick=toggleDark;
+document.getElementById("loginBtn").onclick=login;
+document.getElementById("logoutBtn").onclick=logout;
+document.getElementById("postBtn").onclick=createPost;
 
 init();
 
 });
 </script>
-
 </body>
 </html>
