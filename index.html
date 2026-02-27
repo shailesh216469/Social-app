@@ -80,14 +80,27 @@ const supabase = window.supabase.createClient(
 
 let currentUser = null;
 
-function formatTime(dateString){
-  const d = new Date(dateString);
-  return d.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+function timeAgo(dateString){
+
+  const now = new Date();
+  const past = new Date(dateString);
+  const seconds = Math.floor((now - past) / 1000);
+
+  if(seconds < 60) return "Just now";
+
+  const minutes = Math.floor(seconds / 60);
+  if(minutes < 60) return minutes + "m ago";
+
+  const hours = Math.floor(minutes / 60);
+  if(hours < 24) return hours + "h ago";
+
+  const days = Math.floor(hours / 24);
+  if(days < 7) return days + "d ago";
+
+  return past.toLocaleDateString(undefined,{
+    day:"2-digit",
+    month:"short",
+    year:"numeric"
   });
 }
 
@@ -202,12 +215,15 @@ async function renderPost(post){
 
   const timeText =
     post.updated_at && post.updated_at !== post.created_at
-      ? "Edited • " + formatTime(post.updated_at)
-      : formatTime(post.created_at);
+      ? "Edited • " + timeAgo(post.updated_at)
+      : timeAgo(post.created_at);
 
   const div = document.createElement("div");
   div.className="post";
   div.id="post-"+post.id;
+
+  div.dataset.created = post.created_at;
+  div.dataset.updated = post.updated_at;
 
   div.innerHTML=`
     <b>${post.username || "User"}</b>
@@ -298,9 +314,10 @@ function subscribeRealtime(){
           if(postDiv){
             postDiv.querySelector(".content").innerText = payload.new.content;
 
-            const timeDiv = postDiv.querySelector(".small");
-            timeDiv.innerText =
-              "Edited • " + formatTime(payload.new.updated_at);
+            postDiv.dataset.updated = payload.new.updated_at;
+
+            postDiv.querySelector(".small").innerText =
+              "Edited • " + timeAgo(payload.new.updated_at);
           }
         }
       }
@@ -324,33 +341,30 @@ function subscribeRealtime(){
 
         const countEl = document.getElementById("like-count-"+postId);
         if(countEl) countEl.textContent = count || 0;
-
-        if(currentUser){
-          const { data } = await supabase
-            .from("likes")
-            .select("*")
-            .eq("post_id",postId)
-            .eq("user_id",currentUser.id)
-            .eq("active",true)
-            .maybeSingle();
-
-          const btn = document.getElementById("like-btn-"+postId);
-          if(btn){
-            if(data){
-              btn.classList.add("liked");
-              btn.classList.remove("not-liked");
-              btn.textContent="Unlike";
-            }else{
-              btn.classList.remove("liked");
-              btn.classList.add("not-liked");
-              btn.textContent="Like";
-            }
-          }
-        }
       }
     )
     .subscribe();
 }
+
+setInterval(() => {
+
+  const posts = document.querySelectorAll(".post");
+
+  posts.forEach(post => {
+
+    const created = post.dataset.created;
+    const updated = post.dataset.updated;
+    const timeDiv = post.querySelector(".small");
+
+    if(updated && updated !== created){
+      timeDiv.innerText = "Edited • " + timeAgo(updated);
+    }else{
+      timeDiv.innerText = timeAgo(created);
+    }
+
+  });
+
+}, 30000);
 
 document.getElementById("darkBtn").onclick = toggleDark;
 document.getElementById("loginBtn").onclick = login;
