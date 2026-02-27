@@ -24,6 +24,9 @@ body{
 .dark .post{
   background:#1e1e1e;
 }
+button{
+  margin-right:5px;
+}
 </style>
 </head>
 <body>
@@ -43,7 +46,6 @@ body{
 
 <div id="posts"></div>
 
-<!-- Load Supabase UMD -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <script>
@@ -61,6 +63,7 @@ document.addEventListener("DOMContentLoaded", function(){
     const { data } = await supabase.auth.getUser();
     currentUser = data.user;
     loadPosts();
+    subscribeRealtime();
   }
 
   function toggleDark(){
@@ -92,12 +95,10 @@ document.addEventListener("DOMContentLoaded", function(){
     }]);
 
     document.getElementById("postInput").value="";
-    loadPosts();
   }
 
   async function deletePost(id){
     await supabase.from("posts").delete().eq("id", id);
-    loadPosts();
   }
 
   async function likePost(id){
@@ -110,12 +111,9 @@ document.addEventListener("DOMContentLoaded", function(){
       post_id:id,
       user_id:currentUser.id
     }]);
-
-    loadPosts();
   }
 
   async function loadPosts(){
-
     const { data:posts } = await supabase
       .from("posts")
       .select("*")
@@ -127,38 +125,75 @@ document.addEventListener("DOMContentLoaded", function(){
     if(!posts) return;
 
     for(const post of posts){
-
-      const { count } = await supabase
-        .from("likes")
-        .select("*",{count:"exact",head:true})
-        .eq("post_id",post.id);
-
-      const div = document.createElement("div");
-      div.className="post";
-      div.innerHTML=`
-        <b>${post.username || "User"}</b><br>
-        ${post.content}
-        <br><br>
-        ❤️ ${count || 0}
-        <br><br>
-        <button onclick="likePost('${post.id}')">Like</button>
-        ${
-          currentUser && currentUser.id===post.user_id
-          ? `<button onclick="deletePost('${post.id}')">Delete</button>`
-          : ""
-        }
-      `;
-      container.appendChild(div);
+      renderPost(post);
     }
   }
 
-  // Attach buttons properly
+  async function renderPost(post){
+
+    const { count } = await supabase
+      .from("likes")
+      .select("*",{count:"exact",head:true})
+      .eq("post_id",post.id);
+
+    const container = document.getElementById("posts");
+
+    // prevent duplicate rendering
+    if(document.getElementById("post-"+post.id)) return;
+
+    const div = document.createElement("div");
+    div.className="post";
+    div.id="post-"+post.id;
+
+    div.innerHTML=`
+      <b>${post.username || "User"}</b><br>
+      ${post.content}
+      <br><br>
+      ❤️ ${count || 0}
+      <br><br>
+      <button onclick="likePost('${post.id}')">Like</button>
+      ${
+        currentUser && currentUser.id===post.user_id
+        ? `<button onclick="deletePost('${post.id}')">Delete</button>`
+        : ""
+      }
+    `;
+
+    container.prepend(div);
+  }
+
+  function removePost(id){
+    const el = document.getElementById("post-"+id);
+    if(el) el.remove();
+  }
+
+  function subscribeRealtime(){
+
+    supabase
+      .channel("posts-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "posts" },
+        payload => {
+
+          if(payload.eventType === "INSERT"){
+            renderPost(payload.new);
+          }
+
+          if(payload.eventType === "DELETE"){
+            removePost(payload.old.id);
+          }
+
+        }
+      )
+      .subscribe();
+  }
+
   document.getElementById("darkBtn").onclick = toggleDark;
   document.getElementById("loginBtn").onclick = login;
   document.getElementById("logoutBtn").onclick = logout;
   document.getElementById("postBtn").onclick = createPost;
 
-  // Make functions global for inline buttons
   window.likePost = likePost;
   window.deletePost = deletePost;
 
