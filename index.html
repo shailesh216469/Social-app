@@ -12,6 +12,7 @@
   --subtle: #f0f2f5;
   --primary: #1877f2;
   --like: #e0245e;
+  --danger: #ff4d4f;
 }
 
 .dark {
@@ -29,7 +30,6 @@ body {
   color: var(--text);
   margin: 0;
   padding: 15px;
-  transition: background 0.3s ease, color 0.3s ease;
 }
 
 .post {
@@ -40,56 +40,20 @@ body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
-textarea {
-  width: 100%;
-  border-radius: 8px;
-  padding: 10px;
-  border: 1px solid #ccc;
-  resize: none;
-  background: var(--card);
-  color: var(--text);
-}
-
 button {
   border: none;
   border-radius: 8px;
   padding: 6px 12px;
-  background: var(--primary);
-  color: white;
-  font-weight: 500;
   cursor: pointer;
-  transition: 0.2s;
+  font-weight: 500;
 }
 
-button:hover { opacity: 0.9; }
+.primary { background: var(--primary); color: white; }
+.danger { background: var(--danger); color: white; }
+.likeBtn.liked { background: var(--like); color:white; }
 
-.actionBar {
-  display: flex;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.likeBtn.liked { background: var(--like); }
-
-.comment {
-  background: var(--subtle);
-  padding: 6px 10px;
-  border-radius: 6px;
-  margin-top: 5px;
-  font-size: 14px;
-}
-
-.badge {
-  font-weight: bold;
-}
-
-/* Like Animation */
-@keyframes popLike {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.4); }
-  100% { transform: scale(1); }
-}
-.likeBtn.animate { animation: popLike 0.3s ease; }
+.actionBar { display:flex; gap:10px; margin-top:10px; }
+.comment { background: var(--subtle); padding:6px; margin-top:4px; border-radius:6px; }
 
 </style>
 </head>
@@ -101,17 +65,17 @@ button:hover { opacity: 0.9; }
 <h2>🔥 Ultimate Social App</h2>
 
 <div id="auth">
-  <button id="google">Login with Google</button>
-  <button id="guest">Guest Login</button>
+  <button id="google" class="primary">Login with Google</button>
+  <button id="guest" class="primary">Guest Login</button>
 </div>
 
 <div id="app" style="display:none;">
   <p id="user"></p>
-  <button id="logout">Logout</button>
+  <button id="logout" class="danger">Logout</button>
   <hr>
 
   <textarea id="text" rows="3" placeholder="Write something..."></textarea><br>
-  <button id="post">Post</button>
+  <button id="post" class="primary">Post</button>
 
   <hr>
   <div id="feed"></div>
@@ -130,12 +94,10 @@ const feed=document.getElementById("feed");
 
 /* DARK MODE */
 const themeToggle=document.getElementById("themeToggle");
-
 if(localStorage.getItem("theme")==="dark"){
   document.body.classList.add("dark");
   themeToggle.innerText="☀ Light Mode";
 }
-
 themeToggle.onclick=()=>{
   document.body.classList.toggle("dark");
   const isDark=document.body.classList.contains("dark");
@@ -145,11 +107,7 @@ themeToggle.onclick=()=>{
 
 /* AUTH */
 const { data:{ session } } = await supabase.auth.getSession();
-
-if(session){
-  currentUser=session.user;
-  showApp();
-}
+if(session){ currentUser=session.user; showApp(); }
 
 google.onclick=async()=>{
   await supabase.auth.signInWithOAuth({
@@ -173,7 +131,7 @@ function showApp(){
   auth.style.display="none";
   app.style.display="block";
   user.innerText="Logged in as: "+(currentUser.email||"Guest");
-  loadInitialPosts();
+  loadPosts();
 }
 
 /* CREATE POST */
@@ -189,34 +147,20 @@ post.onclick=async()=>{
   text.value="";
 };
 
-/* INITIAL LOAD */
-async function loadInitialPosts(){
+/* LOAD POSTS */
+async function loadPosts(){
   const { data:posts }=await supabase
     .from("posts")
     .select("*")
     .order("created_at",{ascending:false});
 
-  posts.forEach(post=>renderPost(post,false));
+  posts.forEach(p=>renderPost(p,false));
 }
 
 /* RENDER POST */
-async function renderPost(post,prepend=true){
+function renderPost(post,prepend=true){
 
   if(document.querySelector(`[data-id="${post.id}"]`)) return;
-
-  const { data:likes }=await supabase
-    .from("likes")
-    .select("*")
-    .eq("post_id",post.id)
-    .eq("active",true);
-
-  const { count:commentCount }=await supabase
-    .from("comments")
-    .select("*",{count:"exact",head:true})
-    .eq("post_id",post.id);
-
-  const likeCount=likes.length;
-  const likedByMe=likes.some(l=>l.user_id===currentUser.id);
 
   const div=document.createElement("div");
   div.className="post";
@@ -224,135 +168,21 @@ async function renderPost(post,prepend=true){
 
   div.innerHTML=`
     <p>${post.content}</p>
-
     <div class="actionBar">
-      <button class="likeBtn ${likedByMe?"liked":""}">
-        ❤️ ${likeCount}
-      </button>
-      <button class="toggleComment">
-        💬 <span class="badge">${commentCount||0}</span>
-      </button>
-    </div>
-
-    <div class="commentSection" style="display:none;">
-      <div class="comments"></div>
-      <input type="text" class="commentInput" placeholder="Write comment..." />
-      <button class="sendComment">Send</button>
+      ${post.user_id===currentUser.id ?
+        `<button class="deleteBtn danger">Delete</button>` : ``}
     </div>
   `;
 
   prepend?feed.prepend(div):feed.appendChild(div);
 
-  setupPostEvents(div,post);
-  loadComments(post.id);
-}
-
-/* UPDATE COMMENT COUNT */
-async function updateCommentCount(postId){
-  const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv) return;
-
-  const { count }=await supabase
-    .from("comments")
-    .select("*",{count:"exact",head:true})
-    .eq("post_id",postId);
-
-  postDiv.querySelector(".badge").innerText=count||0;
-}
-
-/* UPDATE LIKE UI */
-async function updateLikeUI(postId){
-  const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv) return;
-
-  const { data:likes }=await supabase
-    .from("likes")
-    .select("*")
-    .eq("post_id",postId)
-    .eq("active",true);
-
-  const likeBtn=postDiv.querySelector(".likeBtn");
-
-  const likeCount=likes.length;
-  const likedByMe=likes.some(l=>l.user_id===currentUser.id);
-
-  likeBtn.innerHTML=`❤️ ${likeCount}`;
-  likeBtn.classList.toggle("liked",likedByMe);
-}
-
-/* LOAD COMMENTS */
-async function loadComments(postId){
-  const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv) return;
-
-  const { data:comments }=await supabase
-    .from("comments")
-    .select("*")
-    .eq("post_id",postId)
-    .order("created_at",{ascending:true});
-
-  const container=postDiv.querySelector(".comments");
-  container.innerHTML="";
-
-  comments.forEach(c=>{
-    const div=document.createElement("div");
-    div.className="comment";
-    div.innerText=c.content;
-    container.appendChild(div);
-  });
-
-  updateCommentCount(postId);
-}
-
-/* EVENTS */
-function setupPostEvents(div,post){
-
-  const likeBtn=div.querySelector(".likeBtn");
-  const toggleBtn=div.querySelector(".toggleComment");
-  const commentSection=div.querySelector(".commentSection");
-  const input=div.querySelector(".commentInput");
-  const send=div.querySelector(".sendComment");
-
-  toggleBtn.onclick=()=>{
-    commentSection.style.display=
-      commentSection.style.display==="none"?"block":"none";
-  };
-
-  likeBtn.onclick=async()=>{
-
-    const { data:existing }=await supabase
-      .from("likes")
-      .select("*")
-      .eq("post_id",post.id)
-      .eq("user_id",currentUser.id)
-      .maybeSingle();
-
-    if(existing){
-      await supabase
-        .from("likes")
-        .update({active:!existing.active})
-        .eq("id",existing.id);
-    }else{
-      await supabase.from("likes").insert({
-        post_id:post.id,
-        user_id:currentUser.id,
-        active:true
-      });
-    }
-  };
-
-  send.onclick=async()=>{
-    const value=input.value.trim();
-    if(!value) return;
-
-    await supabase.from("comments").insert({
-      post_id:post.id,
-      user_id:currentUser.id,
-      content:value
-    });
-
-    input.value="";
-  };
+  if(post.user_id===currentUser.id){
+    div.querySelector(".deleteBtn").onclick=async()=>{
+      if(confirm("Delete this post?")){
+        await supabase.from("posts").delete().eq("id",post.id);
+      }
+    };
+  }
 }
 
 /* REALTIME */
@@ -364,14 +194,10 @@ supabase.channel("realtime-feed")
 )
 
 .on("postgres_changes",
-  {event:"*",schema:"public",table:"likes"},
-  payload=>updateLikeUI(payload.new?.post_id || payload.old?.post_id)
-)
-
-.on("postgres_changes",
-  {event:"*",schema:"public",table:"comments"},
+  {event:"DELETE",schema:"public",table:"posts"},
   payload=>{
-    loadComments(payload.new?.post_id || payload.old?.post_id);
+    const el=document.querySelector(`[data-id="${payload.old.id}"]`);
+    if(el) el.remove();
   }
 )
 
