@@ -2,17 +2,18 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Stable Social App</title>
+<title>Ultimate Social App</title>
 <style>
 body { font-family: Arial; padding: 20px; }
 .post { border:1px solid #ccc; padding:10px; margin-top:10px; border-radius:6px; }
-.likeBtn { padding:4px 8px; }
-.deleteBtn { padding:4px 8px; background:red; color:white; border:none; margin-left:10px; }
+.comment { margin-left:15px; font-size:14px; }
+.commentBox { margin-top:8px; }
+.deleteBtn { background:red; color:white; border:none; padding:3px 6px; }
 </style>
 </head>
 <body>
 
-<h2>🔥 Stable Social App</h2>
+<h2>🔥 Ultimate Social App</h2>
 
 <div id="auth">
   <button id="google">Login Google</button>
@@ -38,51 +39,41 @@ const supabase = createClient(
 );
 
 let currentUser = null;
-
-const authDiv = document.getElementById("auth");
-const appDiv = document.getElementById("app");
-const userText = document.getElementById("user");
 const feed = document.getElementById("feed");
 
-
-// ================= AUTH =================
-
 const { data:{ session } } = await supabase.auth.getSession();
-if (session) {
+if(session){
   currentUser = session.user;
   showApp();
 }
 
-google.onclick = async () => {
+google.onclick = async ()=>{
   await supabase.auth.signInWithOAuth({
     provider:"google",
-    options:{ redirectTo: window.location.origin }
+    options:{redirectTo:window.location.origin}
   });
 };
 
-guest.onclick = async () => {
+guest.onclick = async ()=>{
   const { data } = await supabase.auth.signInAnonymously();
   currentUser = data.user;
   showApp();
 };
 
-logout.onclick = async () => {
+logout.onclick = async ()=>{
   await supabase.auth.signOut();
   location.reload();
 };
 
 function showApp(){
-  authDiv.style.display="none";
-  appDiv.style.display="block";
-  userText.innerText="Logged in as: "+(currentUser.email||"Guest");
+  auth.style.display="none";
+  app.style.display="block";
+  user.innerText="Logged in as: "+(currentUser.email||"Guest");
   loadPosts();
 }
 
-
-// ================= CREATE POST =================
-
 post.onclick = async ()=>{
-  const value = text.value.trim();
+  const value=text.value.trim();
   if(!value) return;
 
   await supabase.from("posts").insert({
@@ -92,9 +83,6 @@ post.onclick = async ()=>{
 
   text.value="";
 };
-
-
-// ================= LOAD POSTS =================
 
 async function loadPosts(){
   const { data:posts } = await supabase
@@ -108,137 +96,89 @@ async function loadPosts(){
   }
 }
 
-
-// ================= RENDER POST =================
-
 async function renderPost(post){
 
-  const { data:likes } = await supabase
-    .from("likes")
-    .select("*")
-    .eq("post_id",post.id)
-    .eq("active",true);
-
-  const likeCount = likes.length;
-
-  const { data:myLike } = await supabase
-    .from("likes")
-    .select("active")
-    .eq("post_id",post.id)
-    .eq("user_id",currentUser.id)
-    .maybeSingle();
-
-  const isLiked = myLike?.active === true;
-
-  const div = document.createElement("div");
+  const div=document.createElement("div");
   div.className="post";
   div.setAttribute("data-id",post.id);
 
-  div.innerHTML = `
-    <p>${post.content}</p>
-    <button class="likeBtn">${isLiked?"❤️ Liked":"🤍 Like"}</button>
-    <span class="likeCount">${likeCount} likes</span>
-    ${post.user_id === currentUser.id ? 
-      '<button class="deleteBtn">Delete</button>' : ''}
-  `;
+  div.innerHTML=`<p>${post.content}</p>
+  <div class="comments"></div>
+  <div class="commentBox">
+    <input type="text" placeholder="Write comment..." />
+    <button>Send</button>
+  </div>`;
 
   feed.appendChild(div);
 
-  div.querySelector(".likeBtn").onclick = async ()=>{
-    await toggleLike(post.id);
+  const commentInput=div.querySelector("input");
+  const sendBtn=div.querySelector(".commentBox button");
+
+  sendBtn.onclick=async ()=>{
+    const value=commentInput.value.trim();
+    if(!value) return;
+
+    await supabase.from("comments").insert({
+      post_id:post.id,
+      user_id:currentUser.id,
+      content:value
+    });
+
+    commentInput.value="";
   };
 
-  const deleteBtn = div.querySelector(".deleteBtn");
-  if(deleteBtn){
-    deleteBtn.onclick = async ()=>{
-      if(confirm("Delete this post?")){
-        await supabase
-          .from("posts")
-          .delete()
-          .eq("id",post.id);
-      }
-    };
-  }
+  loadComments(post.id);
 }
 
+async function loadComments(postId){
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
 
-// ================= TOGGLE LIKE =================
-
-async function toggleLike(postId){
-
-  const { data:existing } = await supabase
-    .from("likes")
+  const { data:comments } = await supabase
+    .from("comments")
     .select("*")
     .eq("post_id",postId)
-    .eq("user_id",currentUser.id)
-    .maybeSingle();
+    .order("created_at",{ascending:true});
 
-  if(existing){
-    await supabase
-      .from("likes")
-      .update({active:!existing.active})
-      .eq("id",existing.id);
-  }else{
-    await supabase.from("likes").insert({
-      post_id:postId,
-      user_id:currentUser.id,
-      active:true
-    });
+  const container=postDiv.querySelector(".comments");
+  container.innerHTML="";
+
+  for(const comment of comments){
+    const c=document.createElement("div");
+    c.className="comment";
+
+    c.innerHTML=`${comment.content}
+    ${comment.user_id===currentUser.id?
+      '<button class="deleteBtn">x</button>':""}`;
+
+    container.appendChild(c);
+
+    if(comment.user_id===currentUser.id){
+      c.querySelector(".deleteBtn").onclick=async ()=>{
+        await supabase
+          .from("comments")
+          .delete()
+          .eq("id",comment.id);
+      };
+    }
   }
 }
 
 
-// ================= REALTIME =================
+// REALTIME
 
 supabase.channel("realtime")
   .on("postgres_changes",
       {event:"INSERT",schema:"public",table:"posts"},
-      (payload)=>{
-        renderPost(payload.new);
-      }
+      (payload)=>renderPost(payload.new)
   )
   .on("postgres_changes",
-      {event:"DELETE",schema:"public",table:"posts"},
-      (payload)=>{
-        const postDiv = document.querySelector(
-          `[data-id="${payload.old.id}"]`
-        );
-        if(postDiv) postDiv.remove();
-      }
+      {event:"INSERT",schema:"public",table:"comments"},
+      (payload)=>loadComments(payload.new.post_id)
   )
   .on("postgres_changes",
-      {event:"*",schema:"public",table:"likes"},
-      async (payload)=>{
-
-        const postId =
-          payload.new?.post_id || payload.old?.post_id;
-
-        if(!postId) return;
-
-        const postDiv = document.querySelector(`[data-id="${postId}"]`);
-        if(!postDiv) return;
-
-        const { data:likes } = await supabase
-          .from("likes")
-          .select("*")
-          .eq("post_id",postId)
-          .eq("active",true);
-
-        postDiv.querySelector(".likeCount").innerText =
-          `${likes.length} likes`;
-
-        const { data:myLike } = await supabase
-          .from("likes")
-          .select("active")
-          .eq("post_id",postId)
-          .eq("user_id",currentUser.id)
-          .maybeSingle();
-
-        const isLiked = myLike?.active === true;
-
-        postDiv.querySelector(".likeBtn").innerText =
-          isLiked ? "❤️ Liked" : "🤍 Like";
-      }
+      {event:"DELETE",schema:"public",table:"comments"},
+      (payload)=>loadComments(payload.old.post_id)
   )
   .subscribe();
 
