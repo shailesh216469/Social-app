@@ -47,9 +47,6 @@ button{
   border-radius:6px;
   margin-top:5px;
   font-size:14px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
 }
 textarea,input{
   width:100%;
@@ -112,33 +109,33 @@ themeToggle.onclick=()=>{
   themeToggle.innerText=isDark?"☀ Light Mode":"🌙 Dark Mode";
 };
 
-/* AUTH SYSTEM */
-const { data: { session } } = await supabase.auth.getSession();
+/* AUTH */
+const { data:{ session } } = await supabase.auth.getSession();
+
 if(session){
-  currentUser = session.user;
+  currentUser=session.user;
   showApp();
 }
 
-supabase.auth.onAuthStateChange((event, session) => {
+supabase.auth.onAuthStateChange((event,session)=>{
   if(session){
-    currentUser = session.user;
+    currentUser=session.user;
     showApp();
   }
 });
 
-google.onclick = async () => {
+google.onclick=async()=>{
   await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: window.location.origin }
+    provider:"google",
+    options:{redirectTo:window.location.origin}
   });
 };
 
-guest.onclick = async () => {
-  const { error } = await supabase.auth.signInAnonymously();
-  if(error) console.log(error);
+guest.onclick=async()=>{
+  await supabase.auth.signInAnonymously();
 };
 
-logout.onclick = async () => {
+logout.onclick=async()=>{
   await supabase.auth.signOut();
   location.reload();
 };
@@ -153,10 +150,12 @@ function showApp(){
 /* CREATE POST */
 post.onclick=async()=>{
   if(!text.value.trim()) return;
+
   await supabase.from("posts").insert({
     content:text.value,
     user_id:currentUser.id
   });
+
   text.value="";
 };
 
@@ -171,7 +170,7 @@ async function loadPosts(){
 }
 
 /* RENDER POST */
-async function renderPost(post){
+function renderPost(post){
 
   if(document.querySelector(`[data-id="${post.id}"]`)) return;
 
@@ -184,7 +183,7 @@ async function renderPost(post){
     <div class="actionBar">
       ${post.user_id===currentUser.id?
         `<button class="danger deletePost">Delete</button>`:""}
-      <button class="toggleComment">💬 0</button>
+      <button class="toggleComment">💬</button>
     </div>
     <div class="commentSection" style="display:none;">
       <div class="comments"></div>
@@ -202,7 +201,6 @@ async function renderPost(post){
     };
   }
 
-  /* COMMENT TOGGLE */
   const toggleBtn=div.querySelector(".toggleComment");
   const commentSection=div.querySelector(".commentSection");
 
@@ -211,15 +209,16 @@ async function renderPost(post){
       commentSection.style.display==="none"?"block":"none";
   };
 
-  /* SEND COMMENT */
   div.querySelector(".sendComment").onclick=async()=>{
     const input=div.querySelector(".commentInput");
     if(!input.value.trim()) return;
+
     await supabase.from("comments").insert({
       post_id:post.id,
       user_id:currentUser.id,
       content:input.value
     });
+
     input.value="";
   };
 
@@ -227,51 +226,56 @@ async function renderPost(post){
 }
 
 /* LOAD COMMENTS */
-del.onclick = async () => {
+async function loadComments(postId){
 
-  const { data, error } = await supabase
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
+
+  const { data:comments }=await supabase
     .from("comments")
-    .delete()
-    .eq("id", comment.id)
-    .select();
+    .select("*")
+    .eq("post_id",postId)
+    .order("created_at",{ascending:true});
 
-  console.log("DELETE RESULT:", data);
-  console.log("DELETE ERROR:", error);
-};
+  const container=postDiv.querySelector(".comments");
+  container.innerHTML="";
+
+  comments.forEach(c=>{
+    const el=document.createElement("div");
+    el.className="comment";
+    el.innerText=c.content;
+    container.appendChild(el);
+  });
+}
 
 /* REALTIME */
-/* REALTIME */
-const channel = supabase.channel("live-feed", {
-  config: { broadcast: { self: true } }
-});
+const channel = supabase.channel("live-feed");
 
 channel
 
 .on("postgres_changes",
-  { event: "INSERT", schema: "public", table: "posts" },
-  payload => {
-    renderPost(payload.new);
-  }
+  {event:"INSERT",schema:"public",table:"posts"},
+  payload=>renderPost(payload.new)
 )
 
 .on("postgres_changes",
-  { event: "DELETE", schema: "public", table: "posts" },
-  payload => {
-    const el = document.querySelector(`[data-id="${payload.old.id}"]`);
+  {event:"DELETE",schema:"public",table:"posts"},
+  payload=>{
+    const el=document.querySelector(`[data-id="${payload.old.id}"]`);
     if(el) el.remove();
   }
 )
 
 .on("postgres_changes",
-  { event: "*", schema: "public", table: "comments" },
-  payload => {
+  {event:"*",schema:"public",table:"comments"},
+  payload=>{
     const postId = payload.new?.post_id || payload.old?.post_id;
     if(postId) loadComments(postId);
   }
 )
 
-.subscribe((status) => {
-  console.log("Realtime status:", status);
+.subscribe(status=>{
+  console.log("Realtime:",status);
 });
 
 </script>
