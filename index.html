@@ -9,14 +9,13 @@ body{font-family:Arial;padding:20px;background:#f4f4f4;transition:0.3s;}
 .dark{background:#111;color:white;}
 .post{background:white;padding:15px;margin-top:15px;border-radius:8px;}
 .dark .post{background:#1e1e1e;}
-.like-btn{cursor:pointer;padding:5px 10px;border-radius:5px;border:none;}
-.liked{background:red;color:white;}
-.not-liked{background:#ddd;}
 button{margin-right:5px;margin-top:5px;}
 .small{font-size:12px;opacity:0.7;}
 .comment-box{margin-top:8px;padding-left:10px;border-left:2px solid #ccc;}
 .comment-input{width:100%;margin-top:5px;}
 .comment-item{margin-bottom:5px;}
+.liked{background:red;color:white;}
+.not-liked{background:#ddd;}
 </style>
 </head>
 <body>
@@ -69,10 +68,12 @@ async function init(){
   subscribeRealtime();
 }
 
-function toggleDark(){document.body.classList.toggle("dark");}
+function toggleDark(){
+  document.body.classList.toggle("dark");
+}
 
 async function login(){
-  await supabase.auth.signInWithOAuth({ provider: 'google' });
+  await supabase.auth.signInWithOAuth({ provider:'google' });
 }
 
 async function logout(){
@@ -83,13 +84,13 @@ async function logout(){
 async function createPost(){
   if(!currentUser) return alert("Login first");
 
-  const content = document.getElementById("postInput").value;
+  const content=document.getElementById("postInput").value;
   if(!content) return;
 
   await supabase.from("posts").insert([{
     content,
-    user_id: currentUser.id,
-    username: currentUser.email
+    user_id:currentUser.id,
+    username:currentUser.email
   }]);
 
   document.getElementById("postInput").value="";
@@ -101,39 +102,39 @@ async function toggleLike(postId){
   const { data } = await supabase
     .from("likes")
     .select("*")
-    .eq("post_id", postId)
-    .eq("user_id", currentUser.id)
+    .eq("post_id",postId)
+    .eq("user_id",currentUser.id)
     .maybeSingle();
 
   if(data){
     await supabase.from("likes")
-      .update({ active: !data.active })
-      .eq("id", data.id);
-  } else {
+      .update({active:!data.active})
+      .eq("id",data.id);
+  }else{
     await supabase.from("likes")
-      .insert([{ post_id: postId, user_id: currentUser.id, active:true }]);
+      .insert([{post_id:postId,user_id:currentUser.id,active:true}]);
   }
 }
 
 async function addComment(postId){
   if(!currentUser) return alert("Login first");
 
-  const input = document.getElementById("comment-input-"+postId);
-  const text = input.value;
+  const input=document.getElementById("comment-input-"+postId);
+  const text=input.value;
   if(!text) return;
 
   await supabase.from("comments").insert([{
-    post_id: postId,
-    user_id: currentUser.id,
-    username: currentUser.email,
-    content: text
+    post_id:postId,
+    user_id:currentUser.id,
+    username:currentUser.email,
+    content:text
   }]);
 
   input.value="";
 }
 
 async function deleteComment(commentId){
-  await supabase.from("comments").delete().eq("id", commentId);
+  await supabase.from("comments").delete().eq("id",commentId);
 }
 
 async function loadComments(postId){
@@ -143,17 +144,16 @@ async function loadComments(postId){
     .eq("post_id",postId)
     .order("created_at",{ascending:true});
 
-  const container = document.getElementById("comments-"+postId);
+  const container=document.getElementById("comments-"+postId);
   container.innerHTML="";
 
   data.forEach(c=>{
     const div=document.createElement("div");
     div.className="comment-item";
-    div.id="comment-"+c.id;
 
     div.innerHTML=`
       <div class="comment-box">
-        <b>${c.username}</b> 
+        <b>${c.username}</b>
         <span class="small">${timeAgo(c.created_at)}</span>
         <br>${c.content}
         ${
@@ -174,6 +174,7 @@ async function loadPosts(){
     .order("created_at",{ascending:false});
 
   document.getElementById("posts").innerHTML="";
+
   for(const post of posts){
     renderPost(post);
   }
@@ -212,6 +213,7 @@ async function renderPost(post){
 
 function subscribeRealtime(){
 
+  // POSTS
   supabase.channel("posts-channel")
     .on("postgres_changes",
       {event:"INSERT",schema:"public",table:"posts"},
@@ -219,6 +221,7 @@ function subscribeRealtime(){
     )
     .subscribe();
 
+  // LIKES
   supabase.channel("likes-channel")
     .on("postgres_changes",
       {event:"*",schema:"public",table:"likes"},
@@ -238,14 +241,17 @@ function subscribeRealtime(){
     )
     .subscribe();
 
+  // COMMENTS (FINAL FIXED VERSION)
   supabase.channel("comments-channel")
     .on("postgres_changes",
-      {event:"INSERT",schema:"public",table:"comments"},
-      payload=>loadComments(payload.new.post_id)
-    )
-    .on("postgres_changes",
-      {event:"DELETE",schema:"public",table:"comments"},
-      payload=>loadComments(payload.old.post_id)
+      {event:"*",schema:"public",table:"comments"},
+      payload=>{
+        // reload comments for all posts
+        document.querySelectorAll(".post").forEach(post=>{
+          const postId=post.id.replace("post-","");
+          loadComments(postId);
+        });
+      }
     )
     .subscribe();
 }
