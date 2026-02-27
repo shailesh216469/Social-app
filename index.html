@@ -37,6 +37,8 @@ input { padding:6px; }
 
 <script>
 
+// ---------------- SUPABASE ----------------
+
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
@@ -45,7 +47,12 @@ const supabase = window.supabase.createClient(
 // ---------------- AUTH ----------------
 
 document.getElementById("googleBtn").addEventListener("click", async () => {
-  await supabase.auth.signInWithOAuth({ provider: "google" });
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin
+    }
+  });
 });
 
 document.getElementById("guestBtn").addEventListener("click", async () => {
@@ -74,7 +81,7 @@ async function checkUser() {
 
 checkUser();
 
-// ---------------- POST ----------------
+// ---------------- CREATE POST ----------------
 
 document.getElementById("postBtn").addEventListener("click", async () => {
   const input = document.getElementById("postInput");
@@ -95,7 +102,8 @@ document.getElementById("postBtn").addEventListener("click", async () => {
 // ---------------- LOAD POSTS ----------------
 
 async function loadPosts() {
-  const { data } = await supabase
+
+  const { data: posts } = await supabase
     .from("posts")
     .select("*")
     .order("created_at", { ascending: false });
@@ -103,7 +111,7 @@ async function loadPosts() {
   const feed = document.getElementById("feed");
   feed.innerHTML = "";
 
-  for (let post of data) {
+  for (let post of posts) {
 
     const { count } = await supabase
       .from("likes")
@@ -121,15 +129,20 @@ async function loadPosts() {
     card.innerHTML = `
       <b>${post.user_email}</b><br>
       ${post.content}<br><br>
-      <button data-id="${post.id}" class="likeBtn">
+
+      <button class="likeBtn" data-id="${post.id}">
         ❤️ ${count || 0}
       </button>
+
       <div>
         <input id="comment-${post.id}" placeholder="Comment..." />
-        <button data-id="${post.id}" class="commentBtn">Comment</button>
+        <button class="commentBtn" data-id="${post.id}">Comment</button>
       </div>
+
       <div>
-        ${comments.map(c => `<p><b>${c.user_email}</b>: ${c.content}</p>`).join("")}
+        ${comments.map(c => `
+          <p><b>${c.user_email}</b>: ${c.content}</p>
+        `).join("")}
       </div>
     `;
 
@@ -140,11 +153,14 @@ async function loadPosts() {
   attachCommentHandlers();
 }
 
-// ---------------- LIKE ----------------
+// ---------------- LIKE (ONLY ONCE TOGGLE) ----------------
 
 function attachLikeHandlers() {
+
   document.querySelectorAll(".likeBtn").forEach(btn => {
+
     btn.addEventListener("click", async () => {
+
       const postId = btn.dataset.id;
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -162,17 +178,25 @@ function attachLikeHandlers() {
           .eq("user_id", user.id);
       } else {
         await supabase.from("likes")
-          .insert({ post_id: postId, user_id: user.id });
+          .insert({
+            post_id: postId,
+            user_id: user.id
+          });
       }
+
     });
+
   });
 }
 
 // ---------------- COMMENT ----------------
 
 function attachCommentHandlers() {
+
   document.querySelectorAll(".commentBtn").forEach(btn => {
+
     btn.addEventListener("click", async () => {
+
       const postId = btn.dataset.id;
       const input = document.getElementById("comment-" + postId);
       const content = input.value.trim();
@@ -188,26 +212,33 @@ function attachCommentHandlers() {
       });
 
       input.value = "";
+
     });
+
   });
 }
 
 // ---------------- REALTIME ----------------
 
 function setupRealtime() {
+
   supabase.channel("realtime")
+
     .on("postgres_changes",
       { event: "*", schema: "public", table: "posts" },
       loadPosts
     )
+
     .on("postgres_changes",
       { event: "*", schema: "public", table: "likes" },
       loadPosts
     )
+
     .on("postgres_changes",
       { event: "*", schema: "public", table: "comments" },
       loadPosts
     )
+
     .subscribe();
 }
 
