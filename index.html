@@ -17,6 +17,7 @@ textarea { width: 100%; max-width: 400px; }
 .likeBtn { padding:4px 8px; }
 </style>
 </head>
+
 <body>
 
 <h2>🔥 Ultimate Social App</h2>
@@ -92,7 +93,7 @@ function showApp() {
 }
 
 
-// ================= POSTS =================
+// ================= CREATE POST =================
 
 postBtn.onclick = async () => {
   const content = postInput.value.trim();
@@ -106,6 +107,9 @@ postBtn.onclick = async () => {
   postInput.value = "";
 };
 
+
+// ================= LOAD POSTS =================
+
 async function loadPosts() {
   const { data } = await supabase
     .from("posts")
@@ -113,6 +117,7 @@ async function loadPosts() {
     .order("created_at", { ascending: false });
 
   postsContainer.innerHTML = "";
+
   for (let post of data) {
     await renderPost(post);
   }
@@ -154,7 +159,7 @@ async function renderPost(post) {
 }
 
 
-// ================= LIKE TOGGLE =================
+// ================= TOGGLE LIKE =================
 
 async function toggleLike(postId) {
 
@@ -179,7 +184,7 @@ async function toggleLike(postId) {
 }
 
 
-// ================= BUTTON UPDATE =================
+// ================= BUTTON UI =================
 
 function updateButton(postDiv, liked) {
   const btn = postDiv.querySelector(".likeBtn");
@@ -189,12 +194,14 @@ function updateButton(postDiv, liked) {
 
 // ================= REALTIME =================
 
-supabase.channel("realtime")
-  .on("postgres_changes",
+supabase.channel("realtime-social")
+  .on(
+    "postgres_changes",
     { event: "*", schema: "public", table: "posts" },
     () => loadPosts()
   )
-  .on("postgres_changes",
+  .on(
+    "postgres_changes",
     { event: "*", schema: "public", table: "likes" },
     async (payload) => {
 
@@ -204,6 +211,7 @@ supabase.channel("realtime")
       const postDiv = document.querySelector(`[data-id="${postId}"]`);
       if (!postDiv) return;
 
+      // Always update count
       const { count } = await supabase
         .from("likes")
         .select("*", { count: "exact", head: true })
@@ -212,13 +220,14 @@ supabase.channel("realtime")
       postDiv.querySelector(".likeCount").innerText =
         `${count || 0} likes`;
 
-      const { data: liked } = await supabase
-        .from("likes")
-        .select("id")
-        .eq("post_id", postId)
-        .eq("user_id", currentUser.id);
-
-      updateButton(postDiv, liked.length > 0);
+      // Only update button if THIS user triggered event
+      if (
+        payload.new?.user_id === currentUser.id ||
+        payload.old?.user_id === currentUser.id
+      ) {
+        const liked = payload.eventType === "INSERT";
+        updateButton(postDiv, liked);
+      }
     }
   )
   .subscribe();
