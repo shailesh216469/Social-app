@@ -24,8 +24,18 @@ body{
 .dark .post{
   background:#1e1e1e;
 }
-button{
-  margin-right:5px;
+.like-btn{
+  cursor:pointer;
+  padding:5px 10px;
+  border-radius:5px;
+  border:none;
+}
+.liked{
+  background:red;
+  color:white;
+}
+.not-liked{
+  background:#ddd;
 }
 </style>
 </head>
@@ -52,155 +62,240 @@ button{
 
 document.addEventListener("DOMContentLoaded", function(){
 
-  const supabase = window.supabase.createClient(
-    "https://dgehzagvyrxbnnvgsiff.supabase.co",
-    "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
-  );
+const supabase = window.supabase.createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
 
-  let currentUser = null;
+let currentUser = null;
 
-  async function init(){
-    const { data } = await supabase.auth.getUser();
-    currentUser = data.user;
-    loadPosts();
-    subscribeRealtime();
+async function init(){
+  const { data } = await supabase.auth.getUser();
+  currentUser = data.user;
+  loadPosts();
+  subscribeRealtime();
+}
+
+function toggleDark(){
+  document.body.classList.toggle("dark");
+}
+
+async function login(){
+  await supabase.auth.signInWithOAuth({ provider: 'google' });
+}
+
+async function logout(){
+  await supabase.auth.signOut();
+  location.reload();
+}
+
+async function createPost(){
+  if(!currentUser){
+    alert("Login first");
+    return;
   }
 
-  function toggleDark(){
-    document.body.classList.toggle("dark");
+  const content = document.getElementById("postInput").value;
+  if(!content) return;
+
+  await supabase.from("posts").insert([{
+    content: content,
+    user_id: currentUser.id,
+    username: currentUser.email
+  }]);
+
+  document.getElementById("postInput").value="";
+}
+
+async function deletePost(id){
+  await supabase.from("posts").delete().eq("id", id);
+}
+
+async function toggleLike(postId){
+
+  if(!currentUser){
+    alert("Login first");
+    return;
   }
 
-  async function login(){
-    await supabase.auth.signInWithOAuth({ provider: 'google' });
-  }
+  const { data } = await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id", postId)
+    .eq("user_id", currentUser.id)
+    .single();
 
-  async function logout(){
-    await supabase.auth.signOut();
-    location.reload();
-  }
-
-  async function createPost(){
-    if(!currentUser){
-      alert("Login first");
-      return;
-    }
-
-    const content = document.getElementById("postInput").value;
-    if(!content) return;
-
-    await supabase.from("posts").insert([{
-      content: content,
-      user_id: currentUser.id,
-      username: currentUser.email
-    }]);
-
-    document.getElementById("postInput").value="";
-  }
-
-  async function deletePost(id){
-    await supabase.from("posts").delete().eq("id", id);
-  }
-
-  async function likePost(id){
-    if(!currentUser){
-      alert("Login first");
-      return;
-    }
-
-    await supabase.from("likes").insert([{
-      post_id:id,
-      user_id:currentUser.id
-    }]);
-  }
-
-  async function loadPosts(){
-    const { data:posts } = await supabase
-      .from("posts")
-      .select("*")
-      .order("created_at",{ascending:false});
-
-    const container = document.getElementById("posts");
-    container.innerHTML="";
-
-    if(!posts) return;
-
-    for(const post of posts){
-      renderPost(post);
-    }
-  }
-
-  async function renderPost(post){
-
-    const { count } = await supabase
+  if(data){
+    await supabase
       .from("likes")
-      .select("*",{count:"exact",head:true})
-      .eq("post_id",post.id);
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", currentUser.id);
+  } else {
+    await supabase
+      .from("likes")
+      .insert([{ post_id: postId, user_id: currentUser.id }]);
+  }
+}
 
-    const container = document.getElementById("posts");
+async function loadPosts(){
 
-    // prevent duplicate rendering
-    if(document.getElementById("post-"+post.id)) return;
+  const { data:posts } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at",{ascending:false});
 
-    const div = document.createElement("div");
-    div.className="post";
-    div.id="post-"+post.id;
+  const container = document.getElementById("posts");
+  container.innerHTML="";
 
-    div.innerHTML=`
-      <b>${post.username || "User"}</b><br>
-      ${post.content}
-      <br><br>
-      ❤️ ${count || 0}
-      <br><br>
-      <button onclick="likePost('${post.id}')">Like</button>
-      ${
-        currentUser && currentUser.id===post.user_id
-        ? `<button onclick="deletePost('${post.id}')">Delete</button>`
-        : ""
-      }
-    `;
+  for(const post of posts){
+    renderPost(post);
+  }
+}
 
-    container.prepend(div);
+async function renderPost(post){
+
+  const { count } = await supabase
+    .from("likes")
+    .select("*",{count:"exact",head:true})
+    .eq("post_id",post.id);
+
+  let liked = false;
+
+  if(currentUser){
+    const { data } = await supabase
+      .from("likes")
+      .select("*")
+      .eq("post_id",post.id)
+      .eq("user_id",currentUser.id)
+      .single();
+
+    if(data) liked = true;
   }
 
-  function removePost(id){
-    const el = document.getElementById("post-"+id);
-    if(el) el.remove();
+  if(document.getElementById("post-"+post.id)) return;
+
+  const div = document.createElement("div");
+  div.className="post";
+  div.id="post-"+post.id;
+
+  div.innerHTML=`
+    <b>${post.username || "User"}</b><br>
+    ${post.content}
+    <br><br>
+    ❤️ <span id="like-count-${post.id}">${count || 0}</span>
+    <br><br>
+    <button 
+      class="like-btn ${liked ? "liked" : "not-liked"}"
+      onclick="toggleLike('${post.id}')"
+      id="like-btn-${post.id}"
+    >
+      ${liked ? "Unlike" : "Like"}
+    </button>
+    ${
+      currentUser && currentUser.id===post.user_id
+      ? `<button onclick="deletePost('${post.id}')">Delete</button>`
+      : ""
+    }
+  `;
+
+  document.getElementById("posts").prepend(div);
+}
+
+function updateLikeUI(postId, count){
+
+  const countEl = document.getElementById("like-count-"+postId);
+  if(countEl) countEl.textContent = count;
+
+  const btn = document.getElementById("like-btn-"+postId);
+  if(btn){
+    if(btn.classList.contains("liked")){
+      btn.classList.remove("liked");
+      btn.classList.add("not-liked");
+      btn.textContent="Like";
+    }else{
+      btn.classList.remove("not-liked");
+      btn.classList.add("liked");
+      btn.textContent="Unlike";
+    }
   }
+}
 
-  function subscribeRealtime(){
+function removePost(id){
+  const el = document.getElementById("post-"+id);
+  if(el) el.remove();
+}
 
-    supabase
-      .channel("posts-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "posts" },
-        payload => {
+function subscribeRealtime(){
 
-          if(payload.eventType === "INSERT"){
-            renderPost(payload.new);
-          }
+  // POSTS realtime
+  supabase
+    .channel("posts-channel")
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "posts" },
+      payload => {
 
-          if(payload.eventType === "DELETE"){
-            removePost(payload.old.id);
-          }
-
+        if(payload.eventType === "INSERT"){
+          renderPost(payload.new);
         }
-      )
-      .subscribe();
-  }
 
-  document.getElementById("darkBtn").onclick = toggleDark;
-  document.getElementById("loginBtn").onclick = login;
-  document.getElementById("logoutBtn").onclick = logout;
-  document.getElementById("postBtn").onclick = createPost;
+        if(payload.eventType === "DELETE"){
+          removePost(payload.old.id);
+        }
+      }
+    )
+    .subscribe();
 
-  window.likePost = likePost;
-  window.deletePost = deletePost;
+  // LIKES realtime
+  supabase
+    .channel("likes-channel")
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "likes" },
+      async payload => {
 
-  init();
+        const postId = payload.new?.post_id || payload.old?.post_id;
+
+        const { count } = await supabase
+          .from("likes")
+          .select("*",{count:"exact",head:true})
+          .eq("post_id",postId);
+
+        const countEl = document.getElementById("like-count-"+postId);
+        if(countEl) countEl.textContent = count || 0;
+
+        if(payload.eventType === "INSERT" && payload.new.user_id === currentUser?.id){
+          const btn = document.getElementById("like-btn-"+postId);
+          if(btn){
+            btn.classList.add("liked");
+            btn.classList.remove("not-liked");
+            btn.textContent="Unlike";
+          }
+        }
+
+        if(payload.eventType === "DELETE" && payload.old.user_id === currentUser?.id){
+          const btn = document.getElementById("like-btn-"+postId);
+          if(btn){
+            btn.classList.remove("liked");
+            btn.classList.add("not-liked");
+            btn.textContent="Like";
+          }
+        }
+      }
+    )
+    .subscribe();
+}
+
+document.getElementById("darkBtn").onclick = toggleDark;
+document.getElementById("loginBtn").onclick = login;
+document.getElementById("logoutBtn").onclick = logout;
+document.getElementById("postBtn").onclick = createPost;
+
+window.toggleLike = toggleLike;
+window.deletePost = deletePost;
+
+init();
 
 });
-
 </script>
 
 </body>
