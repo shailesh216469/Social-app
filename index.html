@@ -27,7 +27,6 @@ textarea { width: 100%; max-width: 400px; }
 </div>
 
 <div id="appSection" style="display:none;">
-
   <p id="userInfo"></p>
   <button id="logoutBtn">Logout</button>
 
@@ -39,7 +38,6 @@ textarea { width: 100%; max-width: 400px; }
   <hr>
 
   <div id="posts"></div>
-
 </div>
 
 
@@ -136,16 +134,18 @@ async function loadPosts() {
 
 async function buildPostElement(post) {
 
-  const { data: likesData } = await supabase
+  const { count } = await supabase
     .from("likes")
-    .select("*")
+    .select("*", { count: "exact", head: true })
     .eq("post_id", post.id);
 
-  const likeCount = likesData ? likesData.length : 0;
+  const { data: userLike } = await supabase
+    .from("likes")
+    .select("id")
+    .eq("post_id", post.id)
+    .eq("user_id", currentUser.id);
 
-  const alreadyLiked = likesData?.some(
-    like => like.user_id === currentUser.id
-  );
+  const alreadyLiked = userLike && userLike.length > 0;
 
   const div = document.createElement("div");
   div.className = "post";
@@ -156,14 +156,14 @@ async function buildPostElement(post) {
     <button class="likeBtn" data-id="${post.id}">
       ${alreadyLiked ? "❤️ Liked" : "🤍 Like"}
     </button>
-    <span class="likeCount">${likeCount} likes</span>
+    <span class="likeCount">${count || 0} likes</span>
   `;
 
   return div;
 }
 
 
-// ================= RENDER POSTS =================
+// ================= RENDER =================
 
 async function renderPosts(posts) {
   postsContainer.innerHTML = "";
@@ -206,7 +206,6 @@ function attachLikeEvents() {
           });
       }
     };
-
   });
 }
 
@@ -215,7 +214,7 @@ function attachLikeEvents() {
 
 const channel = supabase.channel("realtime-social");
 
-// New Posts
+// 🔹 New Posts
 channel.on(
   "postgres_changes",
   { event: "INSERT", schema: "public", table: "posts" },
@@ -226,27 +225,23 @@ channel.on(
   }
 );
 
-// Like / Unlike
+// 🔹 Like / Unlike
 channel.on(
   "postgres_changes",
   { event: "*", schema: "public", table: "likes" },
   async (payload) => {
 
-    console.log("Realtime event:", payload);
-
     const eventType = payload.eventType;
 
-    let postId = null;
+    const postId =
+      eventType === "DELETE"
+        ? payload.old.post_id
+        : payload.new.post_id;
 
-    if (eventType === "INSERT") {
-      postId = payload.new.post_id;
-    }
-
-    if (eventType === "DELETE") {
-      postId = payload.old.post_id;
-    }
-
-    if (!postId) return;
+    const affectedUserId =
+      eventType === "DELETE"
+        ? payload.old.user_id
+        : payload.new.user_id;
 
     const postElement = document.querySelector(
       `[data-post="${postId}"]`
@@ -254,22 +249,28 @@ channel.on(
 
     if (!postElement) return;
 
-    const { data: likesData } = await supabase
+    // 🔹 Update Like Count
+    const { count } = await supabase
       .from("likes")
-      .select("*")
+      .select("*", { count: "exact", head: true })
       .eq("post_id", postId);
 
-    const likeCount = likesData ? likesData.length : 0;
-
-    const alreadyLiked = likesData?.some(
-      like => like.user_id === currentUser.id
-    );
-
-    postElement.querySelector(".likeBtn").innerText =
-      alreadyLiked ? "❤️ Liked" : "🤍 Like";
-
     postElement.querySelector(".likeCount").innerText =
-      likeCount + " likes";
+      (count || 0) + " likes";
+
+    // 🔹 Update Button Only For That User
+    if (affectedUserId === currentUser.id) {
+
+      const button = postElement.querySelector(".likeBtn");
+
+      if (eventType === "INSERT") {
+        button.innerText = "❤️ Liked";
+      }
+
+      if (eventType === "DELETE") {
+        button.innerText = "🤍 Like";
+      }
+    }
   }
 );
 
