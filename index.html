@@ -37,9 +37,9 @@ input { padding:6px; }
 
 <script>
 
-// ---------------- SUPABASE ----------------
+const { createClient } = window.supabase;
 
-const supabase = window.supabase.createClient(
+const supabase = createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
@@ -81,7 +81,7 @@ async function checkUser() {
 
 checkUser();
 
-// ---------------- CREATE POST ----------------
+// ---------------- POST ----------------
 
 document.getElementById("postBtn").addEventListener("click", async () => {
   const input = document.getElementById("postInput");
@@ -153,12 +153,10 @@ async function loadPosts() {
   attachCommentHandlers();
 }
 
-// ---------------- LIKE (ONLY ONCE TOGGLE) ----------------
+// ---------------- LIKE TOGGLE ----------------
 
 function attachLikeHandlers() {
-
   document.querySelectorAll(".likeBtn").forEach(btn => {
-
     btn.addEventListener("click", async () => {
 
       const postId = btn.dataset.id;
@@ -178,23 +176,17 @@ function attachLikeHandlers() {
           .eq("user_id", user.id);
       } else {
         await supabase.from("likes")
-          .insert({
-            post_id: postId,
-            user_id: user.id
-          });
+          .insert({ post_id: postId, user_id: user.id });
       }
 
     });
-
   });
 }
 
 // ---------------- COMMENT ----------------
 
 function attachCommentHandlers() {
-
   document.querySelectorAll(".commentBtn").forEach(btn => {
-
     btn.addEventListener("click", async () => {
 
       const postId = btn.dataset.id;
@@ -214,7 +206,6 @@ function attachCommentHandlers() {
       input.value = "";
 
     });
-
   });
 }
 
