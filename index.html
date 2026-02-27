@@ -240,27 +240,39 @@ del.onclick = async () => {
 };
 
 /* REALTIME */
-supabase.channel("realtime")
+/* REALTIME */
+const channel = supabase.channel("live-feed", {
+  config: { broadcast: { self: true } }
+});
+
+channel
 
 .on("postgres_changes",
-  {event:"INSERT",schema:"public",table:"posts"},
-  payload=>renderPost(payload.new)
+  { event: "INSERT", schema: "public", table: "posts" },
+  payload => {
+    renderPost(payload.new);
+  }
 )
 
 .on("postgres_changes",
-  {event:"DELETE",schema:"public",table:"posts"},
-  payload=>{
-    const el=document.querySelector(`[data-id="${payload.old.id}"]`);
+  { event: "DELETE", schema: "public", table: "posts" },
+  payload => {
+    const el = document.querySelector(`[data-id="${payload.old.id}"]`);
     if(el) el.remove();
   }
 )
 
 .on("postgres_changes",
-  {event:"*",schema:"public",table:"comments"},
-  payload=>loadComments(payload.new?.post_id||payload.old?.post_id)
+  { event: "*", schema: "public", table: "comments" },
+  payload => {
+    const postId = payload.new?.post_id || payload.old?.post_id;
+    if(postId) loadComments(postId);
+  }
 )
 
-.subscribe();
+.subscribe((status) => {
+  console.log("Realtime status:", status);
+});
 
 </script>
 </body>
