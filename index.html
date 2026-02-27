@@ -1,19 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Test</title>
+  <meta charset="UTF-8" />
+  <title>Supabase Test</title>
 </head>
 <body>
 
-<button id="testBtn">Click Me</button>
+<button id="loginBtn">Login Test</button>
 
-<script>
-console.log("JS Loaded");
+<script type="module">
+  console.log("Module Loaded");
 
-document.getElementById("testBtn").addEventListener("click", function() {
-  console.log("Button Clicked");
-  alert("Working");
-});
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+  const supabase = createClient(
+    "https://dgehzagvyrxbnnvgsiff.supabase.co",
+    "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+  );
+
+  document.getElementById("loginBtn").addEventListener("click", async () => {
+    console.log("Login Clicked");
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin }
+    });
+  });
 </script>
 
 </body>
