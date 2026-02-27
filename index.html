@@ -62,9 +62,7 @@ button {
   transition: 0.2s;
 }
 
-button:hover {
-  opacity: 0.9;
-}
+button:hover { opacity: 0.9; }
 
 .actionBar {
   display: flex;
@@ -76,9 +74,7 @@ button:hover {
   background: var(--like);
 }
 
-.commentSection {
-  margin-top: 10px;
-}
+.commentSection { margin-top: 10px; }
 
 .comment {
   background: var(--subtle);
@@ -86,6 +82,17 @@ button:hover {
   border-radius: 6px;
   margin-top: 5px;
   font-size: 14px;
+}
+
+/* ❤️ Like Animation */
+@keyframes popLike {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+.likeBtn.animate {
+  animation: popLike 0.3s ease;
 }
 </style>
 </head>
@@ -274,16 +281,29 @@ function setupPostEvents(div, post){
       .maybeSingle();
 
     if(existing){
+
+      const newState = !existing.active;
+
       await supabase
         .from("likes")
-        .update({active:!existing.active})
+        .update({active:newState})
         .eq("id",existing.id);
+
+      if(newState){
+        likeBtn.classList.add("animate");
+        setTimeout(()=>likeBtn.classList.remove("animate"),300);
+      }
+
     }else{
+
       await supabase.from("likes").insert({
         post_id:post.id,
         user_id:currentUser.id,
         active:true
       });
+
+      likeBtn.classList.add("animate");
+      setTimeout(()=>likeBtn.classList.remove("animate"),300);
     }
   };
 
@@ -350,22 +370,18 @@ async function updateLikeUI(postId){
 const channel = supabase.channel("realtime-feed");
 
 channel
-
 .on("postgres_changes",
   {event:"INSERT",schema:"public",table:"posts"},
   payload=>renderPost(payload.new,true)
 )
-
 .on("postgres_changes",
   {event:"*",schema:"public",table:"likes"},
   payload=>updateLikeUI(payload.new?.post_id || payload.old?.post_id)
 )
-
 .on("postgres_changes",
   {event:"*",schema:"public",table:"comments"},
   payload=>loadComments(payload.new?.post_id || payload.old?.post_id)
 )
-
 .subscribe(status=>{
   console.log("Realtime status:",status);
 });
