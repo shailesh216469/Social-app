@@ -15,8 +15,9 @@ body{font-family:Arial;padding:20px;background:#f4f4f4;transition:0.3s;}
 button{margin-right:5px;margin-top:5px;}
 .edit-area{width:100%;margin-top:5px;}
 .small{font-size:12px;opacity:0.7;}
-.comment-box{margin-top:10px;padding-left:10px;border-left:2px solid #ccc;}
+.comment-box{margin-top:8px;padding-left:10px;border-left:2px solid #ccc;}
 .comment-input{width:100%;margin-top:5px;}
+.comment-item{margin-bottom:5px;}
 </style>
 </head>
 <body>
@@ -82,6 +83,7 @@ async function logout(){
 
 async function createPost(){
   if(!currentUser) return alert("Login first");
+
   const content = document.getElementById("postInput").value;
   if(!content) return;
 
@@ -131,6 +133,10 @@ async function addComment(postId){
   input.value="";
 }
 
+async function deleteComment(commentId){
+  await supabase.from("comments").delete().eq("id", commentId);
+}
+
 async function loadComments(postId){
   const { data } = await supabase
     .from("comments")
@@ -143,8 +149,21 @@ async function loadComments(postId){
 
   data.forEach(c=>{
     const div=document.createElement("div");
-    div.className="comment-box";
-    div.innerHTML=`<b>${c.username}</b> - <span class="small">${timeAgo(c.created_at)}</span><br>${c.content}`;
+    div.className="comment-item";
+    div.id="comment-"+c.id;
+
+    div.innerHTML=`
+      <div class="comment-box">
+        <b>${c.username}</b> 
+        <span class="small">${timeAgo(c.created_at)}</span>
+        <br>${c.content}
+        ${
+          currentUser && currentUser.id===c.user_id
+          ? `<br><button onclick="deleteComment('${c.id}')">Delete</button>`
+          : ""
+        }
+      </div>
+    `;
     container.appendChild(div);
   });
 }
@@ -215,13 +234,17 @@ function subscribeRealtime(){
     ).subscribe();
 
   supabase.channel("comments-channel")
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"comments"},
-      payload=>loadComments(payload.new.post_id)
+    .on("postgres_changes",{event:"*",schema:"public",table:"comments"},
+      payload=>{
+        const postId = payload.new?.post_id || payload.old?.post_id;
+        loadComments(postId);
+      }
     ).subscribe();
 }
 
 window.toggleLike=toggleLike;
 window.addComment=addComment;
+window.deleteComment=deleteComment;
 
 document.getElementById("darkBtn").onclick=toggleDark;
 document.getElementById("loginBtn").onclick=login;
