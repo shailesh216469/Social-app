@@ -6,7 +6,6 @@
 
 <style>
 body { font-family: Arial; padding:20px; background:#f5f5f5; }
-
 .post {
   background:white;
   border-radius:8px;
@@ -14,30 +13,11 @@ body { font-family: Arial; padding:20px; background:#f5f5f5; }
   margin-top:12px;
   box-shadow:0 2px 4px rgba(0,0,0,0.1);
 }
-
-.actionBar {
-  display:flex;
-  gap:15px;
-  margin-top:10px;
-}
-
+.actionBar { display:flex; gap:15px; margin-top:10px; }
+.likeBtn.liked { color:red; font-weight:bold; }
+.commentSection { margin-top:10px; }
+.comment { font-size:14px; margin-left:10px; margin-top:4px; }
 button { cursor:pointer; }
-
-.likeBtn.liked {
-  color:red;
-  font-weight:bold;
-}
-
-.commentSection {
-  margin-top:10px;
-}
-
-.comment {
-  font-size:14px;
-  margin-left:10px;
-  margin-top:4px;
-}
-
 </style>
 </head>
 
@@ -63,7 +43,6 @@ button { cursor:pointer; }
 </div>
 
 <script type="module">
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabase = createClient(
@@ -75,7 +54,6 @@ let currentUser=null;
 const feed=document.getElementById("feed");
 
 const { data:{ session } } = await supabase.auth.getSession();
-
 if(session){
   currentUser=session.user;
   showApp();
@@ -182,7 +160,7 @@ async function renderPost(post){
       .select("*")
       .eq("post_id",post.id)
       .eq("user_id",currentUser.id)
-      .single();
+      .maybeSingle();
 
     if(existing){
       await supabase
@@ -236,7 +214,6 @@ async function loadComments(postId){
 }
 
 async function updateLikeUI(postId){
-
   const postDiv=document.querySelector(`[data-id="${postId}"]`);
   if(!postDiv) return;
 
@@ -255,36 +232,38 @@ async function updateLikeUI(postId){
   likeBtn.classList.toggle("liked",likedByMe);
 }
 
-/* ===== CLEAN REALTIME (NO FLICKER) ===== */
+/* ===== CLEAN REALTIME SYSTEM ===== */
 
-supabase.channel("clean-realtime")
+const channel = supabase.channel("db-changes");
 
+channel
 .on("postgres_changes",
-  {event:"INSERT",schema:"public",table:"posts"},
-  payload=>renderPost(payload.new)
+  {event:"*",schema:"public",table:"posts"},
+  payload=>{
+    console.log("Post change:",payload);
+    loadPosts();
+  }
 )
 
 .on("postgres_changes",
-  {event:"UPDATE",schema:"public",table:"likes"},
-  payload=>updateLikeUI(payload.new.post_id)
+  {event:"*",schema:"public",table:"likes"},
+  payload=>{
+    console.log("Like change:",payload);
+    updateLikeUI(payload.new?.post_id || payload.old?.post_id);
+  }
 )
 
 .on("postgres_changes",
-  {event:"INSERT",schema:"public",table:"likes"},
-  payload=>updateLikeUI(payload.new.post_id)
+  {event:"*",schema:"public",table:"comments"},
+  payload=>{
+    console.log("Comment change:",payload);
+    loadComments(payload.new?.post_id || payload.old?.post_id);
+  }
 )
 
-.on("postgres_changes",
-  {event:"INSERT",schema:"public",table:"comments"},
-  payload=>loadComments(payload.new.post_id)
-)
-
-.on("postgres_changes",
-  {event:"DELETE",schema:"public",table:"comments"},
-  payload=>loadComments(payload.old.post_id)
-)
-
-.subscribe();
+.subscribe(status=>{
+  console.log("Realtime status:",status);
+});
 
 </script>
 </body>
