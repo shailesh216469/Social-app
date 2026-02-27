@@ -14,9 +14,7 @@ textarea { width: 100%; max-width: 400px; }
   margin-top: 10px;
   border-radius: 6px;
 }
-.likeBtn {
-  padding: 4px 8px;
-}
+.likeBtn { padding:4px 8px; }
 </style>
 </head>
 <body>
@@ -60,31 +58,28 @@ const postBtn = document.getElementById("postBtn");
 const postsContainer = document.getElementById("posts");
 
 
-// ======================= AUTH =======================
+// ================= AUTH =================
 
 const { data: { session } } = await supabase.auth.getSession();
-
 if (session) {
   currentUser = session.user;
   showApp();
 }
 
-document.getElementById("googleBtn").onclick = async () => {
+googleBtn.onclick = async () => {
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin }
   });
 };
 
-document.getElementById("guestBtn").onclick = async () => {
-  const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) return alert(error.message);
-
+guestBtn.onclick = async () => {
+  const { data } = await supabase.auth.signInAnonymously();
   currentUser = data.user;
   showApp();
 };
 
-document.getElementById("logoutBtn").onclick = async () => {
+logoutBtn.onclick = async () => {
   await supabase.auth.signOut();
   location.reload();
 };
@@ -97,37 +92,34 @@ function showApp() {
 }
 
 
-// ======================= POSTS =======================
+// ================= POSTS =================
 
 postBtn.onclick = async () => {
   const content = postInput.value.trim();
   if (!content) return;
 
-  const { error } = await supabase.from("posts").insert({
-    content: content,
+  await supabase.from("posts").insert({
+    content,
     user_id: currentUser.id
   });
-
-  if (error) return alert(error.message);
 
   postInput.value = "";
 };
 
 async function loadPosts() {
-  const { data: posts } = await supabase
+  const { data } = await supabase
     .from("posts")
     .select("*")
     .order("created_at", { ascending: false });
 
   postsContainer.innerHTML = "";
-
-  for (let post of posts) {
-    renderPost(post);
+  for (let post of data) {
+    await renderPost(post);
   }
 }
 
 
-// ======================= RENDER POST =======================
+// ================= RENDER POST =================
 
 async function renderPost(post) {
 
@@ -136,87 +128,82 @@ async function renderPost(post) {
     .select("*", { count: "exact", head: true })
     .eq("post_id", post.id);
 
-  const { data } = await supabase
+  const { data: liked } = await supabase
     .from("likes")
     .select("id")
     .eq("post_id", post.id)
     .eq("user_id", currentUser.id);
 
-  const alreadyLiked = data.length > 0;
-
   const div = document.createElement("div");
   div.className = "post";
-  div.setAttribute("data-post-id", post.id);
+  div.setAttribute("data-id", post.id);
 
   div.innerHTML = `
     <p>${post.content}</p>
-    <button class="likeBtn">
-      ${alreadyLiked ? "❤️ Liked" : "🤍 Like"}
-    </button>
+    <button class="likeBtn"></button>
     <span class="likeCount">${count || 0} likes</span>
   `;
 
   postsContainer.appendChild(div);
 
-  const button = div.querySelector(".likeBtn");
+  updateButton(div, liked.length > 0);
 
-  button.onclick = async () => {
-
-    const { data: existing } = await supabase
-      .from("likes")
-      .select("id")
-      .eq("post_id", post.id)
-      .eq("user_id", currentUser.id);
-
-    if (existing.length > 0) {
-      // Unlike
-      await supabase
-        .from("likes")
-        .delete()
-        .eq("post_id", post.id)
-        .eq("user_id", currentUser.id);
-    } else {
-      // Like
-      await supabase.from("likes").insert({
-        post_id: post.id,
-        user_id: currentUser.id
-      });
-    }
+  div.querySelector(".likeBtn").onclick = async () => {
+    await toggleLike(post.id);
   };
 }
 
 
-// ======================= REALTIME =======================
+// ================= LIKE TOGGLE =================
 
-const channel = supabase.channel("social-realtime");
+async function toggleLike(postId) {
 
-channel
-  .on(
-    "postgres_changes",
+  const { data: existing } = await supabase
+    .from("likes")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("user_id", currentUser.id);
+
+  if (existing.length > 0) {
+    await supabase
+      .from("likes")
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", currentUser.id);
+  } else {
+    await supabase.from("likes").insert({
+      post_id: postId,
+      user_id: currentUser.id
+    });
+  }
+}
+
+
+// ================= BUTTON UPDATE =================
+
+function updateButton(postDiv, liked) {
+  const btn = postDiv.querySelector(".likeBtn");
+  btn.innerText = liked ? "❤️ Liked" : "🤍 Like";
+}
+
+
+// ================= REALTIME =================
+
+supabase.channel("realtime")
+  .on("postgres_changes",
     { event: "*", schema: "public", table: "posts" },
-    async (payload) => {
-      console.log("Post change", payload);
-      loadPosts();
-    }
+    () => loadPosts()
   )
-  .on(
-    "postgres_changes",
+  .on("postgres_changes",
     { event: "*", schema: "public", table: "likes" },
     async (payload) => {
-      console.log("Like change", payload);
 
       const postId =
         payload.new?.post_id || payload.old?.post_id;
 
-      if (!postId) return;
-
-      const postDiv = document.querySelector(
-        `[data-post-id="${postId}"]`
-      );
-
+      const postDiv = document.querySelector(`[data-id="${postId}"]`);
       if (!postDiv) return;
 
-      // Update like count
       const { count } = await supabase
         .from("likes")
         .select("*", { count: "exact", head: true })
@@ -225,20 +212,13 @@ channel
       postDiv.querySelector(".likeCount").innerText =
         `${count || 0} likes`;
 
-      // Update button state
-      const { data } = await supabase
+      const { data: liked } = await supabase
         .from("likes")
         .select("id")
         .eq("post_id", postId)
         .eq("user_id", currentUser.id);
 
-      const button = postDiv.querySelector(".likeBtn");
-
-      if (data.length > 0) {
-        button.innerText = "❤️ Liked";
-      } else {
-        button.innerText = "🤍 Like";
-      }
+      updateButton(postDiv, liked.length > 0);
     }
   )
   .subscribe();
