@@ -131,13 +131,16 @@ async function toggleLike(postId){
   if(data){
     await supabase
       .from("likes")
-      .delete()
-      .eq("post_id", postId)
-      .eq("user_id", currentUser.id);
+      .update({ active: !data.active })
+      .eq("id", data.id);
   } else {
     await supabase
       .from("likes")
-      .insert([{ post_id: postId, user_id: currentUser.id }]);
+      .insert([{
+        post_id: postId,
+        user_id: currentUser.id,
+        active: true
+      }]);
   }
 }
 
@@ -161,7 +164,8 @@ async function renderPost(post){
   const { count } = await supabase
     .from("likes")
     .select("*",{count:"exact",head:true})
-    .eq("post_id",post.id);
+    .eq("post_id",post.id)
+    .eq("active",true);
 
   let liked = false;
 
@@ -171,6 +175,7 @@ async function renderPost(post){
       .select("*")
       .eq("post_id",post.id)
       .eq("user_id",currentUser.id)
+      .eq("active",true)
       .maybeSingle();
 
     if(data) liked = true;
@@ -212,7 +217,6 @@ function removePost(id){
 
 function subscribeRealtime(){
 
-  // POSTS realtime
   supabase
     .channel("posts-channel")
     .on("postgres_changes",
@@ -230,7 +234,6 @@ function subscribeRealtime(){
     )
     .subscribe();
 
-  // LIKES realtime (FULL SAFE REFRESH)
   supabase
     .channel("likes-channel")
     .on("postgres_changes",
@@ -243,7 +246,8 @@ function subscribeRealtime(){
         const { count } = await supabase
           .from("likes")
           .select("*",{count:"exact",head:true})
-          .eq("post_id",postId);
+          .eq("post_id",postId)
+          .eq("active",true);
 
         const countEl = document.getElementById("like-count-"+postId);
         if(countEl) countEl.textContent = count || 0;
@@ -254,6 +258,7 @@ function subscribeRealtime(){
             .select("*")
             .eq("post_id",postId)
             .eq("user_id",currentUser.id)
+            .eq("active",true)
             .maybeSingle();
 
           const btn = document.getElementById("like-btn-"+postId);
