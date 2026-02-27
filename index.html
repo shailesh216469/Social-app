@@ -227,45 +227,17 @@ async function renderPost(post){
 }
 
 /* LOAD COMMENTS */
-async function loadComments(postId){
+del.onclick = async () => {
 
-  const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv) return;
-
-  const { data:comments }=await supabase
+  const { data, error } = await supabase
     .from("comments")
-    .select("*")
-    .eq("post_id",postId)
-    .order("created_at",{ascending:true});
+    .delete()
+    .eq("id", comment.id)
+    .select();
 
-  const container=postDiv.querySelector(".comments");
-  container.innerHTML="";
-
-  comments.forEach(comment=>{
-    const cDiv=document.createElement("div");
-    cDiv.className="comment";
-
-    const span=document.createElement("span");
-    span.innerText=comment.content;
-    cDiv.appendChild(span);
-
-    if(comment.user_id===currentUser.id){
-      const del=document.createElement("button");
-      del.className="danger";
-      del.innerText="X";
-      del.onclick=async()=>{
-        await supabase.from("comments")
-          .delete()
-          .eq("id",comment.id);
-      };
-      cDiv.appendChild(del);
-    }
-
-    container.appendChild(cDiv);
-  });
-
-  postDiv.querySelector(".toggleComment").innerText=`💬 ${comments.length}`;
-}
+  console.log("DELETE RESULT:", data);
+  console.log("DELETE ERROR:", error);
+};
 
 /* REALTIME */
 supabase.channel("realtime")
