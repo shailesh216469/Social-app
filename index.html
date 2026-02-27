@@ -37,6 +37,9 @@ body{
 .not-liked{
   background:#ddd;
 }
+button{
+  margin-right:5px;
+}
 </style>
 </head>
 <body>
@@ -202,25 +205,6 @@ async function renderPost(post){
   document.getElementById("posts").prepend(div);
 }
 
-function updateLikeUI(postId, count){
-
-  const countEl = document.getElementById("like-count-"+postId);
-  if(countEl) countEl.textContent = count;
-
-  const btn = document.getElementById("like-btn-"+postId);
-  if(btn){
-    if(btn.classList.contains("liked")){
-      btn.classList.remove("liked");
-      btn.classList.add("not-liked");
-      btn.textContent="Like";
-    }else{
-      btn.classList.remove("not-liked");
-      btn.classList.add("liked");
-      btn.textContent="Unlike";
-    }
-  }
-}
-
 function removePost(id){
   const el = document.getElementById("post-"+id);
   if(el) el.remove();
@@ -246,7 +230,7 @@ function subscribeRealtime(){
     )
     .subscribe();
 
-  // LIKES realtime
+  // LIKES realtime (stable refresh method)
   supabase
     .channel("likes-channel")
     .on("postgres_changes",
@@ -254,6 +238,7 @@ function subscribeRealtime(){
       async payload => {
 
         const postId = payload.new?.post_id || payload.old?.post_id;
+        if(!postId) return;
 
         const { count } = await supabase
           .from("likes")
@@ -263,23 +248,28 @@ function subscribeRealtime(){
         const countEl = document.getElementById("like-count-"+postId);
         if(countEl) countEl.textContent = count || 0;
 
-        if(payload.eventType === "INSERT" && payload.new.user_id === currentUser?.id){
+        if(currentUser){
+          const { data } = await supabase
+            .from("likes")
+            .select("*")
+            .eq("post_id",postId)
+            .eq("user_id",currentUser.id)
+            .single();
+
           const btn = document.getElementById("like-btn-"+postId);
           if(btn){
-            btn.classList.add("liked");
-            btn.classList.remove("not-liked");
-            btn.textContent="Unlike";
+            if(data){
+              btn.classList.add("liked");
+              btn.classList.remove("not-liked");
+              btn.textContent="Unlike";
+            }else{
+              btn.classList.remove("liked");
+              btn.classList.add("not-liked");
+              btn.textContent="Like";
+            }
           }
         }
 
-        if(payload.eventType === "DELETE" && payload.old.user_id === currentUser?.id){
-          const btn = document.getElementById("like-btn-"+postId);
-          if(btn){
-            btn.classList.remove("liked");
-            btn.classList.add("not-liked");
-            btn.textContent="Like";
-          }
-        }
       }
     )
     .subscribe();
