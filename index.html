@@ -7,6 +7,7 @@
 body { font-family: Arial; padding: 20px; }
 .post { border:1px solid #ccc; padding:10px; margin-top:10px; border-radius:6px; }
 .likeBtn { padding:4px 8px; }
+.deleteBtn { padding:4px 8px; background:red; color:white; border:none; margin-left:10px; }
 </style>
 </head>
 <body>
@@ -108,7 +109,7 @@ async function loadPosts(){
 }
 
 
-// ================= RENDER ONE POST =================
+// ================= RENDER POST =================
 
 async function renderPost(post){
 
@@ -137,6 +138,8 @@ async function renderPost(post){
     <p>${post.content}</p>
     <button class="likeBtn">${isLiked?"❤️ Liked":"🤍 Like"}</button>
     <span class="likeCount">${likeCount} likes</span>
+    ${post.user_id === currentUser.id ? 
+      '<button class="deleteBtn">Delete</button>' : ''}
   `;
 
   feed.appendChild(div);
@@ -144,6 +147,18 @@ async function renderPost(post){
   div.querySelector(".likeBtn").onclick = async ()=>{
     await toggleLike(post.id);
   };
+
+  const deleteBtn = div.querySelector(".deleteBtn");
+  if(deleteBtn){
+    deleteBtn.onclick = async ()=>{
+      if(confirm("Delete this post?")){
+        await supabase
+          .from("posts")
+          .delete()
+          .eq("id",post.id);
+      }
+    };
+  }
 }
 
 
@@ -183,6 +198,15 @@ supabase.channel("realtime")
       }
   )
   .on("postgres_changes",
+      {event:"DELETE",schema:"public",table:"posts"},
+      (payload)=>{
+        const postDiv = document.querySelector(
+          `[data-id="${payload.old.id}"]`
+        );
+        if(postDiv) postDiv.remove();
+      }
+  )
+  .on("postgres_changes",
       {event:"*",schema:"public",table:"likes"},
       async (payload)=>{
 
@@ -194,18 +218,14 @@ supabase.channel("realtime")
         const postDiv = document.querySelector(`[data-id="${postId}"]`);
         if(!postDiv) return;
 
-        // Update only this post
-
         const { data:likes } = await supabase
           .from("likes")
           .select("*")
           .eq("post_id",postId)
           .eq("active",true);
 
-        const likeCount = likes.length;
-
         postDiv.querySelector(".likeCount").innerText =
-          `${likeCount} likes`;
+          `${likes.length} likes`;
 
         const { data:myLike } = await supabase
           .from("likes")
