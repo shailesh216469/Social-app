@@ -61,7 +61,7 @@ const postBtn = document.getElementById("postBtn");
 const postsContainer = document.getElementById("posts");
 
 
-// ================= SESSION CHECK =================
+// ================= SESSION =================
 
 const { data: { session } } = await supabase.auth.getSession();
 
@@ -73,14 +73,14 @@ if (session) {
 
 // ================= AUTH =================
 
-document.getElementById("googleBtn").onclick = async () => {
+googleBtn.onclick = async () => {
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin }
   });
 };
 
-document.getElementById("guestBtn").onclick = async () => {
+guestBtn.onclick = async () => {
   const { data, error } = await supabase.auth.signInAnonymously();
   if (error) return alert(error.message);
 
@@ -88,7 +88,7 @@ document.getElementById("guestBtn").onclick = async () => {
   showApp();
 };
 
-document.getElementById("logoutBtn").onclick = async () => {
+logoutBtn.onclick = async () => {
   await supabase.auth.signOut();
   location.reload();
 };
@@ -108,17 +108,13 @@ postBtn.onclick = async () => {
   if (!content) return;
 
   const { error } = await supabase.from("posts").insert({
-    content: content,
+    content,
     user_id: currentUser.id
   });
 
-  if (error) {
-    alert(error.message);
-    return;
-  }
+  if (error) return alert(error.message);
 
   postInput.value = "";
-  loadPosts();
 };
 
 
@@ -130,10 +126,7 @@ async function loadPosts() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error(error);
-    return;
-  }
+  if (error) return console.error(error);
 
   renderPosts(posts);
 }
@@ -145,47 +138,53 @@ async function renderPosts(posts) {
   postsContainer.innerHTML = "";
 
   for (let post of posts) {
-
-    // get all likes of this post
-    const { data: likesData } = await supabase
-      .from("likes")
-      .select("*")
-      .eq("post_id", post.id);
-
-    const likeCount = likesData ? likesData.length : 0;
-
-    const alreadyLiked = likesData?.some(
-      like => like.user_id === currentUser.id
-    );
-
-    const div = document.createElement("div");
-    div.className = "post";
-
-    div.innerHTML = `
-      <p>${post.content}</p>
-      <button class="likeBtn" data-id="${post.id}">
-        ${alreadyLiked ? "❤️ Liked" : "🤍 Like"}
-      </button>
-      <span>${likeCount} likes</span>
-    `;
-
-    postsContainer.appendChild(div);
+    const element = await buildPostElement(post);
+    postsContainer.appendChild(element);
   }
 
   attachLikeEvents();
 }
 
 
-// ================= LIKE SYSTEM =================
+// ================= BUILD POST =================
+
+async function buildPostElement(post) {
+
+  const { data: likesData } = await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id", post.id);
+
+  const likeCount = likesData ? likesData.length : 0;
+
+  const alreadyLiked = likesData?.some(
+    like => like.user_id === currentUser.id
+  );
+
+  const div = document.createElement("div");
+  div.className = "post";
+  div.setAttribute("data-post", post.id);
+
+  div.innerHTML = `
+    <p>${post.content}</p>
+    <button class="likeBtn" data-id="${post.id}">
+      ${alreadyLiked ? "❤️ Liked" : "🤍 Like"}
+    </button>
+    <span class="likeCount">${likeCount} likes</span>
+  `;
+
+  return div;
+}
+
+
+// ================= LIKE TOGGLE =================
 
 function attachLikeEvents() {
   document.querySelectorAll(".likeBtn").forEach(button => {
 
     button.onclick = async () => {
-
       const postId = button.dataset.id;
 
-      // Check if already liked
       const { data: existing } = await supabase
         .from("likes")
         .select("id")
@@ -193,15 +192,14 @@ function attachLikeEvents() {
         .eq("user_id", currentUser.id);
 
       if (existing && existing.length > 0) {
-        // 🔴 UNLIKE (delete)
+        // Unlike
         await supabase
           .from("likes")
           .delete()
           .eq("post_id", postId)
           .eq("user_id", currentUser.id);
-
       } else {
-        // 🟢 LIKE (insert)
+        // Like
         await supabase
           .from("likes")
           .insert({
@@ -209,33 +207,54 @@ function attachLikeEvents() {
             user_id: currentUser.id
           });
       }
-
-      loadPosts();
     };
 
   });
 }
 
 
-// ================= REALTIME UPDATE =================
+// ================= SMART REALTIME =================
 
-const channel = supabase.channel("realtime-updates");
+const channel = supabase.channel("smart-realtime");
 
-// Listen to post changes
+// New Post
 channel.on(
   "postgres_changes",
-  { event: "*", schema: "public", table: "posts" },
-  () => {
-    loadPosts();
+  { event: "INSERT", schema: "public", table: "posts" },
+  async (payload) => {
+    const element = await buildPostElement(payload.new);
+    postsContainer.prepend(element);
+    attachLikeEvents();
   }
 );
 
-// Listen to like changes
+// Like/Unlike
 channel.on(
   "postgres_changes",
   { event: "*", schema: "public", table: "likes" },
-  () => {
-    loadPosts();
+  async (payload) => {
+
+    const postId = payload.new?.post_id || payload.old?.post_id;
+
+    const postElement = document.querySelector(`[data-post="${postId}"]`);
+    if (!postElement) return;
+
+    const { data: likesData } = await supabase
+      .from("likes")
+      .select("*")
+      .eq("post_id", postId);
+
+    const likeCount = likesData ? likesData.length : 0;
+
+    const alreadyLiked = likesData?.some(
+      like => like.user_id === currentUser.id
+    );
+
+    postElement.querySelector(".likeBtn").innerText =
+      alreadyLiked ? "❤️ Liked" : "🤍 Like";
+
+    postElement.querySelector(".likeCount").innerText =
+      likeCount + " likes";
   }
 );
 
