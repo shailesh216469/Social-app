@@ -1,265 +1,191 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ultimate Social App</title>
-
-<style>
-body{
-  font-family:Arial;
-  padding:20px;
-  background:#f2f2f2;
-}
-
-.post{
-  background:white;
-  padding:12px;
-  margin-top:12px;
-  border-radius:8px;
-  box-shadow:0 2px 5px rgba(0,0,0,0.1);
-}
-
-.username{
-  font-weight:bold;
-}
-
-.time{
-  font-size:12px;
-  color:gray;
-  margin-top:4px;
-}
-
-.comment{
-  font-size:13px;
-  margin-left:10px;
-  margin-top:6px;
-  color:#444;
-}
-
-.profile-img{
-  width:32px;
-  height:32px;
-  border-radius:50%;
-  vertical-align:middle;
-  margin-right:6px;
-}
-
-button{
-  margin:5px 5px 5px 0;
-  padding:5px 10px;
-  cursor:pointer;
-}
-</style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔥 Ultimate Social App</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    .card { background:#f2f2f2; padding:15px; margin:15px 0; border-radius:10px; }
+    button { padding:6px 10px; margin-top:5px; cursor:pointer; }
+    input { padding:6px; }
+  </style>
 </head>
-
 <body>
 
 <h2>🔥 Ultimate Social App</h2>
 
 <div id="authSection">
-  <button id="googleBtn">Login with Google</button>
-  <button id="guestBtn">Continue as Guest</button>
+  <button onclick="googleLogin()">Login with Google</button>
+  <button onclick="guestLogin()">Guest Login</button>
 </div>
 
 <div id="appSection" style="display:none;">
-
-  <p>
-    <img id="profilePic" class="profile-img">
-    <span id="userEmail"></span>
-  </p>
-
-  <button id="logoutBtn">Logout</button>
+  <p id="userInfo"></p>
+  <button onclick="logout()">Logout</button>
 
   <br><br>
 
-  <input id="postInput" placeholder="Write something...">
-  <button id="postBtn">Post</button>
+  <input id="postInput" placeholder="Write something..." />
+  <button onclick="addPost()">Post</button>
 
   <div id="feed"></div>
-
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <script>
-
-document.addEventListener("DOMContentLoaded", function(){
-
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let currentUser = null;
+checkUser();
 
-const authSection = document.getElementById("authSection");
-const appSection = document.getElementById("appSection");
-const userEmailSpan = document.getElementById("userEmail");
-const profilePic = document.getElementById("profilePic");
+async function checkUser() {
+  const { data: { user } } = await supabase.auth.getUser();
 
-// AUTH LISTENER
-supabase.auth.onAuthStateChange((event, session)=>{
-  if(session){
-    currentUser = session.user;
-
-    authSection.style.display="none";
-    appSection.style.display="block";
-
-    userEmailSpan.innerText = currentUser.email || "Guest";
-    profilePic.src = currentUser.user_metadata?.avatar_url || "https://via.placeholder.com/32";
-
+  if (user) {
+    document.getElementById("authSection").style.display = "none";
+    document.getElementById("appSection").style.display = "block";
+    document.getElementById("userInfo").innerText =
+      user.email ? user.email : "Guest";
     loadPosts();
-  } else {
-    currentUser = null;
-    authSection.style.display="block";
-    appSection.style.display="none";
+    setupRealtime();
   }
-});
+}
 
-// LOGIN
-document.getElementById("googleBtn").onclick =
-  ()=> supabase.auth.signInWithOAuth({provider:"google"});
-
-document.getElementById("guestBtn").onclick =
-  ()=> supabase.auth.signInAnonymously();
-
-document.getElementById("logoutBtn").onclick =
-  ()=> supabase.auth.signOut();
-
-// CREATE POST
-document.getElementById("postBtn").onclick = async ()=>{
-
-  const text = document.getElementById("postInput").value;
-  if(!text.trim()) return;
-
-  await supabase.from("posts").insert([{
-    content:text,
-    user_email:currentUser.email || "Guest",
-    user_id:currentUser.id,
-    likes:0
-  }]);
-
-  document.getElementById("postInput").value="";
-};
-
-// REALTIME
-supabase.channel("realtime")
-.on("postgres_changes",
-  {event:"*",schema:"public",table:"posts"},
-  ()=> loadPosts()
-)
-.on("postgres_changes",
-  {event:"*",schema:"public",table:"comments"},
-  ()=> loadPosts()
-)
-.subscribe();
-
-// LOAD POSTS
-async function loadPosts(){
-
-  const {data:posts} =
-    await supabase.from("posts")
-    .select("*")
-    .order("id",{ascending:false});
-
-  const {data:comments} =
-    await supabase.from("comments")
-    .select("*");
-
-  const feed = document.getElementById("feed");
-  feed.innerHTML="";
-
-  posts.forEach(post=>{
-
-    const div = document.createElement("div");
-    div.className="post";
-
-    div.innerHTML = `
-      <div class="username">${post.user_email}</div>
-      <div>${post.content}</div>
-      <div class="time">${timeAgo(post.created_at)}</div>
-      <button onclick="likePost(${post.id},${post.likes})">❤️ ${post.likes}</button>
-      ${post.user_id===currentUser.id ?
-        `<button onclick="deletePost(${post.id})">🗑 Delete</button>` : ""}
-      <div id="comments-${post.id}"></div>
-      <input id="commentInput-${post.id}" placeholder="Comment...">
-      <button onclick="addComment(${post.id})">Comment</button>
-    `;
-
-    feed.appendChild(div);
-
-    const commentContainer =
-      document.getElementById(`comments-${post.id}`);
-
-    comments
-      .filter(c=>c.post_id===post.id)
-      .forEach(c=>{
-        const cm=document.createElement("div");
-        cm.className="comment";
-        cm.innerText = `${c.user_email}: ${c.content}`;
-        commentContainer.appendChild(cm);
-      });
-
+async function googleLogin() {
+  await supabase.auth.signInWithOAuth({
+    provider: "google"
   });
 }
 
-// LIKE
-window.likePost = async (id,likes)=>{
-  await supabase.from("posts")
-    .update({likes:likes+1})
-    .eq("id",id);
-};
-
-// DELETE POST
-window.deletePost = async (id)=>{
-  await supabase.from("posts")
-    .delete()
-    .eq("id",id);
-};
-
-// ADD COMMENT
-window.addComment = async (postId)=>{
-
-  const input =
-    document.getElementById(`commentInput-${postId}`);
-
-  if(!input.value.trim()) return;
-
-  await supabase.from("comments").insert([{
-    post_id:postId,
-    user_email:currentUser.email || "Guest",
-    user_id:currentUser.id,
-    content:input.value
-  }]);
-
-  input.value="";
-};
-
-// TIME AGO
-function timeAgo(dateString){
-
-  const now=new Date();
-  const past=new Date(dateString);
-  const seconds=Math.floor((now-past)/1000);
-
-  const intervals={
-    year:31536000,
-    month:2592000,
-    day:86400,
-    hour:3600,
-    minute:60
-  };
-
-  for(let key in intervals){
-    const value=Math.floor(seconds/intervals[key]);
-    if(value>=1)
-      return value+" "+key+(value>1?"s ago":" ago");
-  }
-
-  return "Just now";
+async function guestLogin() {
+  await supabase.auth.signInAnonymously();
 }
 
-});
+async function logout() {
+  await supabase.auth.signOut();
+  location.reload();
+}
+
+async function addPost() {
+  const input = document.getElementById("postInput");
+  const content = input.value.trim();
+  if (!content) return;
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  await supabase.from("posts").insert({
+    content: content,
+    user_id: user.id,
+    user_email: user.email || "Guest"
+  });
+
+  input.value = "";
+}
+
+async function loadPosts() {
+  const { data } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  const feed = document.getElementById("feed");
+  feed.innerHTML = "";
+
+  for (let post of data) {
+
+    const { count } = await supabase
+      .from("likes")
+      .select("*", { count: "exact", head: true })
+      .eq("post_id", post.id);
+
+    const { data: comments } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("post_id", post.id);
+
+    feed.innerHTML += `
+      <div class="card">
+        <b>${post.user_email}</b><br>
+        ${post.content}<br><br>
+
+        <button onclick="toggleLike(${post.id})">
+          ❤️ ${count || 0}
+        </button>
+
+        <div>
+          <input id="comment-${post.id}" placeholder="Comment..." />
+          <button onclick="addComment(${post.id})">Comment</button>
+        </div>
+
+        <div>
+          ${comments.map(c => `<p><b>${c.user_email}</b>: ${c.content}</p>`).join("")}
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function toggleLike(postId) {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: existing } = await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id", postId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from("likes")
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", user.id);
+  } else {
+    await supabase
+      .from("likes")
+      .insert({
+        post_id: postId,
+        user_id: user.id
+      });
+  }
+}
+
+async function addComment(postId) {
+  const input = document.getElementById("comment-" + postId);
+  const content = input.value.trim();
+  if (!content) return;
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  await supabase.from("comments").insert({
+    post_id: postId,
+    content: content,
+    user_id: user.id,
+    user_email: user.email || "Guest"
+  });
+
+  input.value = "";
+}
+
+function setupRealtime() {
+  supabase.channel("realtime")
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "posts" },
+      () => loadPosts()
+    )
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "likes" },
+      () => loadPosts()
+    )
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "comments" },
+      () => loadPosts()
+    )
+    .subscribe();
+}
 </script>
 
 </body>
