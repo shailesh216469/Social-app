@@ -217,7 +217,7 @@ function attachLikeEvents() {
 
 const channel = supabase.channel("smart-realtime");
 
-// New Post
+// 🔹 New Post
 channel.on(
   "postgres_changes",
   { event: "INSERT", schema: "public", table: "posts" },
@@ -228,15 +228,22 @@ channel.on(
   }
 );
 
-// Like/Unlike
+// 🔹 Like / Unlike
 channel.on(
   "postgres_changes",
   { event: "*", schema: "public", table: "likes" },
   async (payload) => {
 
-    const postId = payload.new?.post_id || payload.old?.post_id;
+    // Handle INSERT and DELETE correctly
+    const postId =
+      payload.eventType === "DELETE"
+        ? payload.old.post_id
+        : payload.new.post_id;
 
-    const postElement = document.querySelector(`[data-post="${postId}"]`);
+    const postElement = document.querySelector(
+      `[data-post="${postId}"]`
+    );
+
     if (!postElement) return;
 
     const { data: likesData } = await supabase
