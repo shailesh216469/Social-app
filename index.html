@@ -1,5 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>JS Test</title>
+
+<style>
+body {
+  font-family: sans-serif;
+  padding: 30px;
+  transition: 0.3s;
+}
+
+.dark {
+  background: black;
+  color: white;
+}
+
+button {
+  padding: 10px 15px;
+  margin: 10px 0;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🔥 JavaScript Test Page</h2>
+
+<button id="darkBtn">Toggle Dark Mode</button>
+<button id="alertBtn">Show Alert</button>
+
 <script>
-document.getElementById("themeToggle").onclick = () => {
+console.log("Script is running ✅");
+
+document.getElementById("darkBtn").addEventListener("click", function() {
+  console.log("Dark button clicked");
   document.body.classList.toggle("dark");
-};
+});
+
+document.getElementById("alertBtn").addEventListener("click", function() {
+  alert("JavaScript is working 🚀");
+});
 </script>
+
+</body>
+</html>
