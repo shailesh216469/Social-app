@@ -10,7 +10,6 @@
   --card:#ffffff;
   --text:#111;
   --primary:#1877f2;
-  --like:#e0245e;
   --danger:#ff4d4f;
   --subtle:#f0f2f5;
 }
@@ -42,8 +41,6 @@ button{
 }
 .primary{background:var(--primary);color:white;}
 .danger{background:var(--danger);color:white;}
-.likeBtn.liked{background:var(--like);color:white;}
-.actionBar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
 .comment{
   background:var(--subtle);
   padding:6px;
@@ -54,7 +51,18 @@ button{
   justify-content:space-between;
   align-items:center;
 }
-textarea,input{width:100%;border-radius:8px;padding:6px;margin-top:5px;}
+textarea,input{
+  width:100%;
+  border-radius:8px;
+  padding:6px;
+  margin-top:5px;
+}
+.actionBar{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
 </style>
 </head>
 <body>
@@ -82,34 +90,55 @@ textarea,input{width:100%;border-radius:8px;padding:6px;margin-top:5px;}
 </div>
 
 <script type="module">
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2?dev";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const supabase=createClient(
+const supabase = createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let currentUser=null;
-const feed=document.getElementById("feed");
+let currentUser = null;
+const feed = document.getElementById("feed");
 
-/* AUTH */
-const { data:{ session } }=await supabase.auth.getSession();
-if(session){currentUser=session.user;showApp();}
+/* DARK MODE */
+if(localStorage.getItem("theme")==="dark"){
+  document.body.classList.add("dark");
+  themeToggle.innerText="☀ Light Mode";
+}
+themeToggle.onclick=()=>{
+  document.body.classList.toggle("dark");
+  const isDark=document.body.classList.contains("dark");
+  localStorage.setItem("theme",isDark?"dark":"light");
+  themeToggle.innerText=isDark?"☀ Light Mode":"🌙 Dark Mode";
+};
 
-google.onclick=async()=>{
+/* AUTH SYSTEM */
+const { data: { session } } = await supabase.auth.getSession();
+if(session){
+  currentUser = session.user;
+  showApp();
+}
+
+supabase.auth.onAuthStateChange((event, session) => {
+  if(session){
+    currentUser = session.user;
+    showApp();
+  }
+});
+
+google.onclick = async () => {
   await supabase.auth.signInWithOAuth({
-    provider:"google",
-    options:{redirectTo:window.location.origin}
+    provider: "google",
+    options: { redirectTo: window.location.origin }
   });
 };
 
-guest.onclick=async()=>{
-  const { data }=await supabase.auth.signInAnonymously();
-  currentUser=data.user;
-  showApp();
+guest.onclick = async () => {
+  const { error } = await supabase.auth.signInAnonymously();
+  if(error) console.log(error);
 };
 
-logout.onclick=async()=>{
+logout.onclick = async () => {
   await supabase.auth.signOut();
   location.reload();
 };
@@ -123,7 +152,7 @@ function showApp(){
 
 /* CREATE POST */
 post.onclick=async()=>{
-  if(!text.value.trim())return;
+  if(!text.value.trim()) return;
   await supabase.from("posts").insert({
     content:text.value,
     user_id:currentUser.id
@@ -133,28 +162,29 @@ post.onclick=async()=>{
 
 /* LOAD POSTS */
 async function loadPosts(){
+  feed.innerHTML="";
   const { data:posts }=await supabase
     .from("posts")
     .select("*")
     .order("created_at",{ascending:false});
-  posts.forEach(p=>renderPost(p,false));
+  posts.forEach(p=>renderPost(p));
 }
 
 /* RENDER POST */
-async function renderPost(post,prepend=true){
+async function renderPost(post){
 
-  if(document.querySelector(`[data-id="${post.id}"]`))return;
+  if(document.querySelector(`[data-id="${post.id}"]`)) return;
 
   const div=document.createElement("div");
   div.className="post";
   div.dataset.id=post.id;
 
   div.innerHTML=`
-    <p class="content">${post.content}</p>
+    <p>${post.content}</p>
     <div class="actionBar">
-      <button class="toggleComment">💬 0</button>
       ${post.user_id===currentUser.id?
-        `<button class="deleteBtn danger">Delete</button>`:""}
+        `<button class="danger deletePost">Delete</button>`:""}
+      <button class="toggleComment">💬 0</button>
     </div>
     <div class="commentSection" style="display:none;">
       <div class="comments"></div>
@@ -163,33 +193,28 @@ async function renderPost(post,prepend=true){
     </div>
   `;
 
-  prepend?feed.prepend(div):feed.appendChild(div);
+  feed.prepend(div);
 
-  setupEvents(div,post);
-  loadComments(post.id);
-}
-
-/* EVENTS */
-function setupEvents(div,post){
-
-  const toggleBtn=div.querySelector(".toggleComment");
-  const commentSection=div.querySelector(".commentSection");
-  const input=div.querySelector(".commentInput");
-  const send=div.querySelector(".sendComment");
-
-  if(div.querySelector(".deleteBtn")){
-    div.querySelector(".deleteBtn").onclick=async()=>{
+  /* DELETE POST */
+  if(div.querySelector(".deletePost")){
+    div.querySelector(".deletePost").onclick=async()=>{
       await supabase.from("posts").delete().eq("id",post.id);
     };
   }
+
+  /* COMMENT TOGGLE */
+  const toggleBtn=div.querySelector(".toggleComment");
+  const commentSection=div.querySelector(".commentSection");
 
   toggleBtn.onclick=()=>{
     commentSection.style.display=
       commentSection.style.display==="none"?"block":"none";
   };
 
-  send.onclick=async()=>{
-    if(!input.value.trim())return;
+  /* SEND COMMENT */
+  div.querySelector(".sendComment").onclick=async()=>{
+    const input=div.querySelector(".commentInput");
+    if(!input.value.trim()) return;
     await supabase.from("comments").insert({
       post_id:post.id,
       user_id:currentUser.id,
@@ -197,6 +222,8 @@ function setupEvents(div,post){
     });
     input.value="";
   };
+
+  loadComments(post.id);
 }
 
 /* LOAD COMMENTS */
@@ -205,74 +232,54 @@ async function loadComments(postId){
   const postDiv=document.querySelector(`[data-id="${postId}"]`);
   if(!postDiv) return;
 
-  const { data:comments } = await supabase
+  const { data:comments }=await supabase
     .from("comments")
     .select("*")
-    .eq("post_id", postId)
+    .eq("post_id",postId)
     .order("created_at",{ascending:true});
 
-  const container = postDiv.querySelector(".comments");
+  const container=postDiv.querySelector(".comments");
   container.innerHTML="";
 
-  comments.forEach(comment => {
+  comments.forEach(comment=>{
+    const cDiv=document.createElement("div");
+    cDiv.className="comment";
 
-    const commentDiv = document.createElement("div");
-    commentDiv.className="comment";
+    const span=document.createElement("span");
+    span.innerText=comment.content;
+    cDiv.appendChild(span);
 
-    const textSpan = document.createElement("span");
-    textSpan.innerText = comment.content;
-
-    commentDiv.appendChild(textSpan);
-
-    // ✅ SHOW DELETE BUTTON ONLY FOR OWNER
-    if(comment.user_id === currentUser.id){
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className="danger";
-      deleteBtn.innerText="X";
-
-      deleteBtn.onclick = async () => {
-
-        const { error } = await supabase
-          .from("comments")
+    if(comment.user_id===currentUser.id){
+      const del=document.createElement("button");
+      del.className="danger";
+      del.innerText="X";
+      del.onclick=async()=>{
+        await supabase.from("comments")
           .delete()
-          .eq("id", comment.id);
-
-        if(error){
-          console.log("DELETE ERROR:", error);
-        }
+          .eq("id",comment.id);
       };
-
-      commentDiv.appendChild(deleteBtn);
+      cDiv.appendChild(del);
     }
 
-    container.appendChild(commentDiv);
+    container.appendChild(cDiv);
   });
 
-  postDiv.querySelector(".toggleComment").innerText = `💬 ${comments.length}`;
-}
-
-  /* DELETE COMMENT EVENT */
-  container.querySelectorAll(".deleteComment").forEach(btn=>{
-    btn.onclick=async()=>{
-      await supabase.from("comments").delete().eq("id",btn.dataset.id);
-    };
-  });
+  postDiv.querySelector(".toggleComment").innerText=`💬 ${comments.length}`;
 }
 
 /* REALTIME */
-supabase.channel("feed")
+supabase.channel("realtime")
 
 .on("postgres_changes",
   {event:"INSERT",schema:"public",table:"posts"},
-  payload=>renderPost(payload.new,true)
+  payload=>renderPost(payload.new)
 )
 
 .on("postgres_changes",
   {event:"DELETE",schema:"public",table:"posts"},
   payload=>{
     const el=document.querySelector(`[data-id="${payload.old.id}"]`);
-    if(el)el.remove();
+    if(el) el.remove();
   }
 )
 
