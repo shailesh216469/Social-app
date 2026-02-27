@@ -3,20 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <title>Ultimate Social App</title>
+
 <style>
-body { font-family: Arial; padding:20px; }
-.post { border:1px solid #ccc; padding:10px; margin-top:10px; border-radius:6px; }
-.comment { margin-left:15px; font-size:14px; }
+body { font-family: Arial; padding:20px; background:#f5f5f5; }
+
+.post {
+  background:white;
+  border-radius:8px;
+  padding:12px;
+  margin-top:12px;
+  box-shadow:0 2px 4px rgba(0,0,0,0.1);
+}
+
+.actionBar {
+  display:flex;
+  gap:15px;
+  margin-top:10px;
+}
+
 button { cursor:pointer; }
-.liked { color:red; }
+
+.likeBtn.liked {
+  color:red;
+  font-weight:bold;
+}
+
+.commentSection {
+  margin-top:10px;
+}
+
+.comment {
+  font-size:14px;
+  margin-left:10px;
+  margin-top:4px;
+}
+
 </style>
 </head>
+
 <body>
 
 <h2>🔥 Ultimate Social App</h2>
 
 <div id="auth">
-  <button id="google">Login Google</button>
+  <button id="google">Login with Google</button>
   <button id="guest">Guest Login</button>
 </div>
 
@@ -24,13 +54,16 @@ button { cursor:pointer; }
   <p id="user"></p>
   <button id="logout">Logout</button>
   <hr>
-  <textarea id="text" rows="3"></textarea><br>
+
+  <textarea id="text" rows="3" placeholder="Write something..."></textarea><br>
   <button id="post">Post</button>
+
   <hr>
   <div id="feed"></div>
 </div>
 
 <script type="module">
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabase = createClient(
@@ -41,7 +74,8 @@ const supabase = createClient(
 let currentUser=null;
 const feed=document.getElementById("feed");
 
-const { data:{ session } }=await supabase.auth.getSession();
+const { data:{ session } } = await supabase.auth.getSession();
+
 if(session){
   currentUser=session.user;
   showApp();
@@ -85,7 +119,7 @@ post.onclick=async()=>{
 };
 
 async function loadPosts(){
-  const { data:posts }=await supabase
+  const { data:posts } = await supabase
     .from("posts")
     .select("*")
     .order("created_at",{ascending:false});
@@ -113,18 +147,33 @@ async function renderPost(post){
 
   div.innerHTML=`
     <p>${post.content}</p>
-    <button class="likeBtn ${likedByMe?"liked":""}">
-      ❤️ ${likeCount}
-    </button>
 
-    <div class="comments"></div>
-    <input type="text" class="commentInput" placeholder="Write comment..." />
-    <button class="sendComment">Send</button>
+    <div class="actionBar">
+      <button class="likeBtn ${likedByMe?"liked":""}">
+        ❤️ ${likeCount}
+      </button>
+      <button class="toggleComment">💬 Comment</button>
+    </div>
+
+    <div class="commentSection" style="display:none;">
+      <div class="comments"></div>
+      <input type="text" class="commentInput" placeholder="Write comment..." />
+      <button class="sendComment">Send</button>
+    </div>
   `;
 
   feed.appendChild(div);
 
   const likeBtn=div.querySelector(".likeBtn");
+  const toggleBtn=div.querySelector(".toggleComment");
+  const commentSection=div.querySelector(".commentSection");
+  const input=div.querySelector(".commentInput");
+  const send=div.querySelector(".sendComment");
+
+  toggleBtn.onclick=()=>{
+    commentSection.style.display=
+      commentSection.style.display==="none"?"block":"none";
+  };
 
   likeBtn.onclick=async()=>{
 
@@ -148,9 +197,6 @@ async function renderPost(post){
       });
     }
   };
-
-  const input=div.querySelector(".commentInput");
-  const send=div.querySelector(".sendComment");
 
   send.onclick=async()=>{
     const value=input.value.trim();
@@ -189,12 +235,55 @@ async function loadComments(postId){
   });
 }
 
-supabase.channel("realtime")
-.on("postgres_changes",{event:"*",schema:"public",table:"posts"},()=>loadPosts())
-.on("postgres_changes",{event:"*",schema:"public",table:"likes"},()=>loadPosts())
-.on("postgres_changes",{event:"*",schema:"public",table:"comments"},
-  payload=>loadComments(payload.new?.post_id || payload.old?.post_id)
+async function updateLikeUI(postId){
+
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
+
+  const { data:likes }=await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id",postId)
+    .eq("active",true);
+
+  const likeBtn=postDiv.querySelector(".likeBtn");
+
+  const likeCount=likes.length;
+  const likedByMe=likes.some(l=>l.user_id===currentUser.id);
+
+  likeBtn.innerHTML=`❤️ ${likeCount}`;
+  likeBtn.classList.toggle("liked",likedByMe);
+}
+
+/* ===== CLEAN REALTIME (NO FLICKER) ===== */
+
+supabase.channel("clean-realtime")
+
+.on("postgres_changes",
+  {event:"INSERT",schema:"public",table:"posts"},
+  payload=>renderPost(payload.new)
 )
+
+.on("postgres_changes",
+  {event:"UPDATE",schema:"public",table:"likes"},
+  payload=>updateLikeUI(payload.new.post_id)
+)
+
+.on("postgres_changes",
+  {event:"INSERT",schema:"public",table:"likes"},
+  payload=>updateLikeUI(payload.new.post_id)
+)
+
+.on("postgres_changes",
+  {event:"INSERT",schema:"public",table:"comments"},
+  payload=>loadComments(payload.new.post_id)
+)
+
+.on("postgres_changes",
+  {event:"DELETE",schema:"public",table:"comments"},
+  payload=>loadComments(payload.old.post_id)
+)
+
 .subscribe();
 
 </script>
