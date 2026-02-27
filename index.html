@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Ultimate Social App</title>
+<meta charset="UTF-8">
+<title>Ultimate Social App</title>
+<style>
+body { font-family: Arial; padding: 20px; }
+button { margin: 5px; }
+.post { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+</style>
 </head>
 <body>
 
@@ -13,9 +18,20 @@
   <button id="guestBtn">Guest Login</button>
 </div>
 
-<div id="userSection" style="display:none;">
+<div id="appSection" style="display:none;">
+
   <p id="userInfo"></p>
   <button id="logoutBtn">Logout</button>
+
+  <hr>
+
+  <textarea id="postInput" placeholder="Write something..." rows="3"></textarea><br>
+  <button id="postBtn">Post</button>
+
+  <hr>
+
+  <div id="posts"></div>
+
 </div>
 
 <script type="module">
@@ -26,45 +42,144 @@ const supabase = createClient(
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-// Check session when page loads
-const { data: { session } } = await supabase.auth.getSession();
+let currentUser = null;
 
+// Check session on load
+const { data: { session } } = await supabase.auth.getSession();
 if (session) {
-  showUser(session.user);
+  currentUser = session.user;
+  showApp();
 }
 
 // Google Login
-document.getElementById("googleBtn").addEventListener("click", async () => {
+googleBtn.onclick = async () => {
   await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: {
-      redirectTo: window.location.origin
-    }
+    options: { redirectTo: window.location.origin }
   });
-});
+};
 
 // Guest Login
-document.getElementById("guestBtn").addEventListener("click", async () => {
+guestBtn.onclick = async () => {
   const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) {
-    alert(error.message);
-  } else {
-    showUser(data.user);
+  if (!error) {
+    currentUser = data.user;
+    showApp();
   }
-});
+};
 
 // Logout
-document.getElementById("logoutBtn").addEventListener("click", async () => {
+logoutBtn.onclick = async () => {
   await supabase.auth.signOut();
   location.reload();
-});
+};
 
-function showUser(user) {
-  document.getElementById("authSection").style.display = "none";
-  document.getElementById("userSection").style.display = "block";
-  document.getElementById("userInfo").innerText =
-    "Logged in as: " + (user.email || "Guest User");
+// Show App
+function showApp() {
+  authSection.style.display = "none";
+  appSection.style.display = "block";
+  userInfo.innerText = "Logged in as: " + (currentUser.email || "Guest");
+  loadPosts();
 }
+
+// Create Post
+postBtn.onclick = async () => {
+  const content = postInput.value.trim();
+  if (!content) return;
+
+  await supabase.from("posts").insert({
+    content,
+    user_id: currentUser.id
+  });
+
+  postInput.value = "";
+};
+
+// Load Posts
+async function loadPosts() {
+  const { data } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  renderPosts(data);
+}
+
+// Render Posts
+async function renderPosts(posts) {
+  postsContainer.innerHTML = "";
+
+  for (let post of posts) {
+
+    const { count } = await supabase
+      .from("likes")
+      .select("*", { count: "exact", head: true })
+      .eq("post_id", post.id);
+
+    const { data: existingLike } = await supabase
+      .from("likes")
+      .select("*")
+      .eq("post_id", post.id)
+      .eq("user_id", currentUser.id);
+
+    const liked = existingLike.length > 0;
+
+    const div = document.createElement("div");
+    div.className = "post";
+
+    div.innerHTML = `
+      <p>${post.content}</p>
+      <button data-id="${post.id}" class="likeBtn">
+        ${liked ? "❤️ Liked" : "🤍 Like"}
+      </button>
+      <span>${count || 0} likes</span>
+    `;
+
+    postsContainer.appendChild(div);
+  }
+
+  attachLikeEvents();
+}
+
+// Like System (Only Once)
+function attachLikeEvents() {
+  document.querySelectorAll(".likeBtn").forEach(btn => {
+    btn.onclick = async () => {
+      const postId = btn.dataset.id;
+
+      const { data: existing } = await supabase
+        .from("likes")
+        .select("*")
+        .eq("post_id", postId)
+        .eq("user_id", currentUser.id);
+
+      if (existing.length > 0) {
+        alert("You already liked this post");
+        return;
+      }
+
+      await supabase.from("likes").insert({
+        post_id: postId,
+        user_id: currentUser.id
+      });
+
+      loadPosts();
+    };
+  });
+}
+
+// Realtime Posts
+supabase
+  .channel("posts-channel")
+  .on("postgres_changes", { event: "*", schema: "public", table: "posts" },
+    payload => {
+      loadPosts();
+    }
+  )
+  .subscribe();
+
+const postsContainer = document.getElementById("posts");
+
 </script>
 
 </body>
