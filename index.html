@@ -12,6 +12,7 @@
   --primary:#1877f2;
   --danger:#ff4d4f;
   --subtle:#f0f2f5;
+  --like:#e0245e;
 }
 .dark{
   --bg:#18191a;
@@ -41,6 +42,7 @@ button{
 }
 .primary{background:var(--primary);color:white;}
 .danger{background:var(--danger);color:white;}
+.likeBtn.liked{background:var(--like);color:white;}
 .comment{
   background:var(--subtle);
   padding:6px;
@@ -94,34 +96,15 @@ const supabase = createClient(
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let currentUser = null;
-const feed = document.getElementById("feed");
-
-/* DARK MODE */
-if(localStorage.getItem("theme")==="dark"){
-  document.body.classList.add("dark");
-  themeToggle.innerText="☀ Light Mode";
-}
-themeToggle.onclick=()=>{
-  document.body.classList.toggle("dark");
-  const isDark=document.body.classList.contains("dark");
-  localStorage.setItem("theme",isDark?"dark":"light");
-  themeToggle.innerText=isDark?"☀ Light Mode":"🌙 Dark Mode";
-};
+let currentUser=null;
+const feed=document.getElementById("feed");
 
 /* AUTH */
 const { data:{ session } } = await supabase.auth.getSession();
-
-if(session){
-  currentUser=session.user;
-  showApp();
-}
+if(session){ currentUser=session.user; showApp(); }
 
 supabase.auth.onAuthStateChange((event,session)=>{
-  if(session){
-    currentUser=session.user;
-    showApp();
-  }
+  if(session){ currentUser=session.user; showApp(); }
 });
 
 google.onclick=async()=>{
@@ -170,7 +153,7 @@ async function loadPosts(){
 }
 
 /* RENDER POST */
-function renderPost(post){
+async function renderPost(post){
 
   if(document.querySelector(`[data-id="${post.id}"]`)) return;
 
@@ -181,6 +164,7 @@ function renderPost(post){
   div.innerHTML=`
     <p>${post.content}</p>
     <div class="actionBar">
+      <button class="likeBtn">❤️ 0</button>
       ${post.user_id===currentUser.id?
         `<button class="danger deletePost">Delete</button>`:""}
       <button class="toggleComment">💬</button>
@@ -194,40 +178,59 @@ function renderPost(post){
 
   feed.prepend(div);
 
-  /* DELETE POST */
   if(div.querySelector(".deletePost")){
     div.querySelector(".deletePost").onclick=async()=>{
       await supabase.from("posts").delete().eq("id",post.id);
     };
   }
 
-  const toggleBtn=div.querySelector(".toggleComment");
-  const commentSection=div.querySelector(".commentSection");
+  const likeBtn=div.querySelector(".likeBtn");
 
-  toggleBtn.onclick=()=>{
-    commentSection.style.display=
-      commentSection.style.display==="none"?"block":"none";
+  likeBtn.onclick=async()=>{
+    const { data:existing }=await supabase
+      .from("likes")
+      .select("*")
+      .eq("post_id",post.id)
+      .eq("user_id",currentUser.id)
+      .maybeSingle();
+
+    if(existing){
+      await supabase.from("likes")
+        .update({active:!existing.active})
+        .eq("id",existing.id);
+    }else{
+      await supabase.from("likes").insert({
+        post_id:post.id,
+        user_id:currentUser.id,
+        active:true
+      });
+    }
   };
 
-  div.querySelector(".sendComment").onclick=async()=>{
-    const input=div.querySelector(".commentInput");
-    if(!input.value.trim()) return;
-
-    await supabase.from("comments").insert({
-      post_id:post.id,
-      user_id:currentUser.id,
-      content:input.value
-    });
-
-    input.value="";
-  };
-
+  updateLikeUI(post.id);
   loadComments(post.id);
+}
+
+/* UPDATE LIKE */
+async function updateLikeUI(postId){
+  const postDiv=document.querySelector(`[data-id="${postId}"]`);
+  if(!postDiv) return;
+
+  const { data:likes }=await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id",postId)
+    .eq("active",true);
+
+  const likedByMe=likes.some(l=>l.user_id===currentUser.id);
+
+  const btn=postDiv.querySelector(".likeBtn");
+  btn.innerText=`❤️ ${likes.length}`;
+  btn.classList.toggle("liked",likedByMe);
 }
 
 /* LOAD COMMENTS */
 async function loadComments(postId){
-
   const postDiv=document.querySelector(`[data-id="${postId}"]`);
   if(!postDiv) return;
 
@@ -239,7 +242,6 @@ async function loadComments(postId){
 
   const container=postDiv.querySelector(".comments");
   container.innerHTML="";
-
   comments.forEach(c=>{
     const el=document.createElement("div");
     el.className="comment";
@@ -249,7 +251,7 @@ async function loadComments(postId){
 }
 
 /* REALTIME */
-const channel = supabase.channel("live-feed");
+const channel=supabase.channel("live-feed");
 
 channel
 
@@ -267,16 +269,22 @@ channel
 )
 
 .on("postgres_changes",
+  {event:"*",schema:"public",table:"likes"},
+  payload=>{
+    const postId=payload.new?.post_id||payload.old?.post_id;
+    if(postId) updateLikeUI(postId);
+  }
+)
+
+.on("postgres_changes",
   {event:"*",schema:"public",table:"comments"},
   payload=>{
-    const postId = payload.new?.post_id || payload.old?.post_id;
+    const postId=payload.new?.post_id||payload.old?.post_id;
     if(postId) loadComments(postId);
   }
 )
 
-.subscribe(status=>{
-  console.log("Realtime:",status);
-});
+.subscribe(status=>console.log("Realtime:",status));
 
 </script>
 </body>
