@@ -25,7 +25,7 @@ body{
   background:var(--bg);
   color:var(--text);
   padding:15px;
-  transition: background .3s, color .3s;
+  transition:.3s;
 }
 .post{
   background:var(--card);
@@ -44,6 +44,16 @@ button{
 .primary{background:var(--primary);color:white;}
 .danger{background:var(--danger);color:white;}
 .likeBtn.liked{background:var(--like);color:white;}
+
+@keyframes pop{
+  0%{transform:scale(1);}
+  50%{transform:scale(1.4);}
+  100%{transform:scale(1);}
+}
+.likeBtn.animate{
+  animation:pop .3s ease;
+}
+
 .comment{
   background:var(--subtle);
   padding:6px;
@@ -66,9 +76,12 @@ textarea,input{
   margin-top:10px;
   flex-wrap:wrap;
 }
-.editArea{
-  width:100%;
-  margin-top:8px;
+.badge{
+  background:var(--primary);
+  color:white;
+  padding:2px 6px;
+  border-radius:12px;
+  font-size:12px;
 }
 </style>
 </head>
@@ -76,7 +89,6 @@ textarea,input{
 
 <button id="themeToggle">🌙</button>
 <hr>
-
 <h2>🔥 Ultimate Social App</h2>
 
 <div id="auth">
@@ -99,7 +111,7 @@ textarea,input{
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const supabase = createClient(
+const supabase=createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
@@ -107,60 +119,41 @@ const supabase = createClient(
 let currentUser=null;
 const feed=document.getElementById("feed");
 
-/* ================= THEME ================= */
-
-const savedTheme = localStorage.getItem("theme");
-
+/* THEME */
+const savedTheme=localStorage.getItem("theme");
 if(savedTheme){
   if(savedTheme==="dark") document.body.classList.add("dark");
-}else{
-  if(window.matchMedia('(prefers-color-scheme: dark)').matches){
-    document.body.classList.add("dark");
-  }
+}else if(window.matchMedia('(prefers-color-scheme: dark)').matches){
+  document.body.classList.add("dark");
 }
-
 updateThemeIcon();
 
 themeToggle.onclick=()=>{
   document.body.classList.toggle("dark");
   localStorage.setItem("theme",
-    document.body.classList.contains("dark") ? "dark" : "light"
-  );
+    document.body.classList.contains("dark")?"dark":"light");
   updateThemeIcon();
 };
-
 function updateThemeIcon(){
-  themeToggle.innerText =
-    document.body.classList.contains("dark") ? "☀️" : "🌙";
+  themeToggle.innerText=
+    document.body.classList.contains("dark")?"☀️":"🌙";
 }
 
-/* ================= AUTH ================= */
-
-const { data:{ session } } = await supabase.auth.getSession();
-
-if(session){
-  currentUser=session.user;
-  showApp();
-}
-
-supabase.auth.onAuthStateChange((event,session)=>{
-  if(session){
-    currentUser=session.user;
-    showApp();
-  }
+/* AUTH */
+const { data:{ session } }=await supabase.auth.getSession();
+if(session){currentUser=session.user;showApp();}
+supabase.auth.onAuthStateChange((e,s)=>{
+  if(s){currentUser=s.user;showApp();}
 });
-
 google.onclick=async()=>{
   await supabase.auth.signInWithOAuth({
     provider:"google",
     options:{redirectTo:window.location.origin}
   });
 };
-
 guest.onclick=async()=>{
   await supabase.auth.signInAnonymously();
 };
-
 logout.onclick=async()=>{
   await supabase.auth.signOut();
   location.reload();
@@ -173,21 +166,17 @@ function showApp(){
   loadPosts();
 }
 
-/* ================= CREATE POST ================= */
-
+/* CREATE POST */
 post.onclick=async()=>{
-  if(!text.value.trim()) return;
-
+  if(!text.value.trim())return;
   await supabase.from("posts").insert({
     content:text.value,
     user_id:currentUser.id
   });
-
   text.value="";
 };
 
-/* ================= LOAD POSTS ================= */
-
+/* LOAD POSTS */
 async function loadPosts(){
   feed.innerHTML="";
   const { data:posts }=await supabase
@@ -197,11 +186,9 @@ async function loadPosts(){
   posts.forEach(p=>renderPost(p));
 }
 
-/* ================= RENDER POST ================= */
-
+/* RENDER POST */
 async function renderPost(post){
-
-  if(document.querySelector(`[data-id="${post.id}"]`)) return;
+  if(document.querySelector(`[data-id="${post.id}"]`))return;
 
   const div=document.createElement("div");
   div.className="post";
@@ -211,10 +198,10 @@ async function renderPost(post){
     <div class="content">${post.content}</div>
     <div class="actionBar">
       <button class="likeBtn">❤️ 0</button>
+      <button class="toggleComment">💬 <span class="badge">0</span></button>
       ${post.user_id===currentUser.id?
         `<button class="primary editBtn">Edit</button>
          <button class="danger deletePost">Delete</button>`:""}
-      <button class="toggleComment">💬</button>
     </div>
     <div class="commentSection" style="display:none;">
       <div class="comments"></div>
@@ -222,10 +209,31 @@ async function renderPost(post){
       <button class="sendComment primary">Send</button>
     </div>
   `;
-
   feed.prepend(div);
 
   const contentDiv=div.querySelector(".content");
+
+  /* EDIT */
+  if(div.querySelector(".editBtn")){
+    div.querySelector(".editBtn").onclick=()=>{
+      const editBox=document.createElement("textarea");
+      editBox.value=contentDiv.innerText;
+      const save=document.createElement("button");
+      save.className="primary";
+      save.innerText="Save";
+      contentDiv.replaceWith(editBox);
+      div.insertBefore(save,div.querySelector(".actionBar"));
+      save.onclick=async()=>{
+        if(!editBox.value.trim())return;
+        await supabase.from("posts")
+          .update({content:editBox.value})
+          .eq("id",post.id);
+        contentDiv.innerText=editBox.value;
+        editBox.replaceWith(contentDiv);
+        save.remove();
+      };
+    };
+  }
 
   /* DELETE */
   if(div.querySelector(".deletePost")){
@@ -234,39 +242,8 @@ async function renderPost(post){
     };
   }
 
-  /* EDIT */
-  if(div.querySelector(".editBtn")){
-    div.querySelector(".editBtn").onclick=()=>{
-      const currentText=contentDiv.innerText;
-
-      const editBox=document.createElement("textarea");
-      editBox.className="editArea";
-      editBox.value=currentText;
-
-      const saveBtn=document.createElement("button");
-      saveBtn.className="primary";
-      saveBtn.innerText="Save";
-
-      contentDiv.replaceWith(editBox);
-      div.insertBefore(saveBtn, div.querySelector(".actionBar"));
-
-      saveBtn.onclick=async()=>{
-        if(!editBox.value.trim()) return;
-
-        await supabase.from("posts")
-          .update({content:editBox.value})
-          .eq("id",post.id);
-
-        editBox.replaceWith(contentDiv);
-        contentDiv.innerText=editBox.value;
-        saveBtn.remove();
-      };
-    };
-  }
-
   /* LIKE */
   const likeBtn=div.querySelector(".likeBtn");
-
   likeBtn.onclick=async()=>{
     const { data:existing }=await supabase
       .from("likes")
@@ -286,24 +263,25 @@ async function renderPost(post){
         active:true
       });
     }
+
+    likeBtn.classList.add("animate");
+    setTimeout(()=>likeBtn.classList.remove("animate"),300);
   };
 
+  /* COMMENTS */
   div.querySelector(".toggleComment").onclick=()=>{
-    const section=div.querySelector(".commentSection");
-    section.style.display=
-      section.style.display==="none"?"block":"none";
+    const sec=div.querySelector(".commentSection");
+    sec.style.display=sec.style.display==="none"?"block":"none";
   };
 
   div.querySelector(".sendComment").onclick=async()=>{
     const input=div.querySelector(".commentInput");
-    if(!input.value.trim()) return;
-
+    if(!input.value.trim())return;
     await supabase.from("comments").insert({
       post_id:post.id,
       user_id:currentUser.id,
       content:input.value
     });
-
     input.value="";
   };
 
@@ -311,52 +289,43 @@ async function renderPost(post){
   loadComments(post.id);
 }
 
-/* ================= LIKE UPDATE ================= */
-
+/* UPDATE LIKE */
 async function updateLikeUI(postId){
   const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv) return;
-
+  if(!postDiv)return;
   const { data:likes }=await supabase
     .from("likes")
     .select("*")
     .eq("post_id",postId)
     .eq("active",true);
-
   const likedByMe=likes.some(l=>l.user_id===currentUser.id);
-
   const btn=postDiv.querySelector(".likeBtn");
   btn.innerText=`❤️ ${likes.length}`;
   btn.classList.toggle("liked",likedByMe);
 }
 
-/* ================= COMMENTS ================= */
-
+/* LOAD COMMENTS */
 async function loadComments(postId){
   const postDiv=document.querySelector(`[data-id="${postId}"]`);
-  if(!postDiv) return;
-
+  if(!postDiv)return;
   const { data:comments }=await supabase
     .from("comments")
     .select("*")
     .eq("post_id",postId)
     .order("created_at",{ascending:true});
-
   const container=postDiv.querySelector(".comments");
   container.innerHTML="";
-
   comments.forEach(c=>{
     const el=document.createElement("div");
     el.className="comment";
     el.innerText=c.content;
     container.appendChild(el);
   });
+  postDiv.querySelector(".badge").innerText=comments.length;
 }
 
-/* ================= REALTIME ================= */
-
+/* REALTIME */
 const channel=supabase.channel("live-feed");
-
 channel
 .on("postgres_changes",
   {event:"INSERT",schema:"public",table:"posts"},
@@ -366,32 +335,31 @@ channel
   {event:"UPDATE",schema:"public",table:"posts"},
   payload=>{
     const el=document.querySelector(`[data-id="${payload.new.id}"] .content`);
-    if(el) el.innerText=payload.new.content;
+    if(el)el.innerText=payload.new.content;
   }
 )
 .on("postgres_changes",
   {event:"DELETE",schema:"public",table:"posts"},
   payload=>{
     const el=document.querySelector(`[data-id="${payload.old.id}"]`);
-    if(el) el.remove();
+    if(el)el.remove();
   }
 )
 .on("postgres_changes",
   {event:"*",schema:"public",table:"likes"},
   payload=>{
     const postId=payload.new?.post_id||payload.old?.post_id;
-    if(postId) updateLikeUI(postId);
+    if(postId)updateLikeUI(postId);
   }
 )
 .on("postgres_changes",
   {event:"*",schema:"public",table:"comments"},
   payload=>{
     const postId=payload.new?.post_id||payload.old?.post_id;
-    if(postId) loadComments(postId);
+    if(postId)loadComments(postId);
   }
 )
 .subscribe();
-
 </script>
 </body>
 </html>
