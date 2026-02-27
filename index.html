@@ -4,7 +4,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🔥 Ultimate Social App</title>
 
-<!-- IMPORTANT: Use UMD version -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <style>
@@ -20,25 +19,24 @@ input { padding:6px; }
 <h2>🔥 Ultimate Social App</h2>
 
 <div id="authSection">
-  <button onclick="googleLogin()">Login with Google</button>
-  <button onclick="guestLogin()">Guest Login</button>
+  <button id="googleBtn">Login with Google</button>
+  <button id="guestBtn">Guest Login</button>
 </div>
 
 <div id="appSection" style="display:none;">
   <p id="userInfo"></p>
-  <button onclick="logout()">Logout</button>
+  <button id="logoutBtn">Logout</button>
 
   <br><br>
 
   <input id="postInput" placeholder="Write something..." />
-  <button onclick="addPost()">Post</button>
+  <button id="postBtn">Post</button>
 
   <div id="feed"></div>
 </div>
 
 <script>
 
-// ✅ Your Supabase credentials
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
@@ -46,25 +44,18 @@ const supabase = window.supabase.createClient(
 
 // ---------------- AUTH ----------------
 
-async function googleLogin() {
-  await supabase.auth.signInWithOAuth({
-    provider: "google"
-  });
-}
+document.getElementById("googleBtn").addEventListener("click", async () => {
+  await supabase.auth.signInWithOAuth({ provider: "google" });
+});
 
-async function guestLogin() {
+document.getElementById("guestBtn").addEventListener("click", async () => {
   await supabase.auth.signInAnonymously();
-}
+});
 
-async function logout() {
+document.getElementById("logoutBtn").addEventListener("click", async () => {
   await supabase.auth.signOut();
   location.reload();
-}
-
-// Make functions global (fixes not defined error)
-window.googleLogin = googleLogin;
-window.guestLogin = guestLogin;
-window.logout = logout;
+});
 
 // ---------------- CHECK USER ----------------
 
@@ -83,9 +74,9 @@ async function checkUser() {
 
 checkUser();
 
-// ---------------- POSTS ----------------
+// ---------------- POST ----------------
 
-async function addPost() {
+document.getElementById("postBtn").addEventListener("click", async () => {
   const input = document.getElementById("postInput");
   const content = input.value.trim();
   if (!content) return;
@@ -93,15 +84,13 @@ async function addPost() {
   const { data: { user } } = await supabase.auth.getUser();
 
   await supabase.from("posts").insert({
-    content: content,
+    content,
     user_id: user.id,
     user_email: user.email || "Guest"
   });
 
   input.value = "";
-}
-
-window.addPost = addPost;
+});
 
 // ---------------- LOAD POSTS ----------------
 
@@ -126,78 +115,82 @@ async function loadPosts() {
       .select("*")
       .eq("post_id", post.id);
 
-    feed.innerHTML += `
-      <div class="card">
-        <b>${post.user_email}</b><br>
-        ${post.content}<br><br>
+    const card = document.createElement("div");
+    card.className = "card";
 
-        <button onclick="toggleLike(${post.id})">
-          ❤️ ${count || 0}
-        </button>
-
-        <div>
-          <input id="comment-${post.id}" placeholder="Comment..." />
-          <button onclick="addComment(${post.id})">Comment</button>
-        </div>
-
-        <div>
-          ${comments.map(c => `<p><b>${c.user_email}</b>: ${c.content}</p>`).join("")}
-        </div>
+    card.innerHTML = `
+      <b>${post.user_email}</b><br>
+      ${post.content}<br><br>
+      <button data-id="${post.id}" class="likeBtn">
+        ❤️ ${count || 0}
+      </button>
+      <div>
+        <input id="comment-${post.id}" placeholder="Comment..." />
+        <button data-id="${post.id}" class="commentBtn">Comment</button>
+      </div>
+      <div>
+        ${comments.map(c => `<p><b>${c.user_email}</b>: ${c.content}</p>`).join("")}
       </div>
     `;
+
+    feed.appendChild(card);
   }
+
+  attachLikeHandlers();
+  attachCommentHandlers();
 }
 
-// ---------------- LIKE TOGGLE ----------------
+// ---------------- LIKE ----------------
 
-async function toggleLike(postId) {
-  const { data: { user } } = await supabase.auth.getUser();
+function attachLikeHandlers() {
+  document.querySelectorAll(".likeBtn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const postId = btn.dataset.id;
+      const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: existing } = await supabase
-    .from("likes")
-    .select("*")
-    .eq("post_id", postId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+      const { data: existing } = await supabase
+        .from("likes")
+        .select("*")
+        .eq("post_id", postId)
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-  if (existing) {
-    await supabase
-      .from("likes")
-      .delete()
-      .eq("post_id", postId)
-      .eq("user_id", user.id);
-  } else {
-    await supabase
-      .from("likes")
-      .insert({
-        post_id: postId,
-        user_id: user.id
-      });
-  }
-}
-
-window.toggleLike = toggleLike;
-
-// ---------------- COMMENTS ----------------
-
-async function addComment(postId) {
-  const input = document.getElementById("comment-" + postId);
-  const content = input.value.trim();
-  if (!content) return;
-
-  const { data: { user } } = await supabase.auth.getUser();
-
-  await supabase.from("comments").insert({
-    post_id: postId,
-    content: content,
-    user_id: user.id,
-    user_email: user.email || "Guest"
+      if (existing) {
+        await supabase.from("likes")
+          .delete()
+          .eq("post_id", postId)
+          .eq("user_id", user.id);
+      } else {
+        await supabase.from("likes")
+          .insert({ post_id: postId, user_id: user.id });
+      }
+    });
   });
-
-  input.value = "";
 }
 
-window.addComment = addComment;
+// ---------------- COMMENT ----------------
+
+function attachCommentHandlers() {
+  document.querySelectorAll(".commentBtn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const postId = btn.dataset.id;
+      const input = document.getElementById("comment-" + postId);
+      const content = input.value.trim();
+      if (!content) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+
+      await supabase.from("comments").insert({
+        post_id: postId,
+        content,
+        user_id: user.id,
+        user_email: user.email || "Guest"
+      });
+
+      input.value = "";
+    });
+  });
+}
 
 // ---------------- REALTIME ----------------
 
@@ -205,15 +198,15 @@ function setupRealtime() {
   supabase.channel("realtime")
     .on("postgres_changes",
       { event: "*", schema: "public", table: "posts" },
-      () => loadPosts()
+      loadPosts
     )
     .on("postgres_changes",
       { event: "*", schema: "public", table: "likes" },
-      () => loadPosts()
+      loadPosts
     )
     .on("postgres_changes",
       { event: "*", schema: "public", table: "comments" },
-      () => loadPosts()
+      loadPosts
     )
     .subscribe();
 }
