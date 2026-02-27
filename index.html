@@ -126,7 +126,7 @@ async function toggleLike(postId){
     .select("*")
     .eq("post_id", postId)
     .eq("user_id", currentUser.id)
-    .single();
+    .maybeSingle();
 
   if(data){
     await supabase
@@ -171,7 +171,7 @@ async function renderPost(post){
       .select("*")
       .eq("post_id",post.id)
       .eq("user_id",currentUser.id)
-      .single();
+      .maybeSingle();
 
     if(data) liked = true;
   }
@@ -230,7 +230,7 @@ function subscribeRealtime(){
     )
     .subscribe();
 
-  // LIKES realtime (stable refresh method)
+  // LIKES realtime (FULL SAFE REFRESH)
   supabase
     .channel("likes-channel")
     .on("postgres_changes",
@@ -254,7 +254,7 @@ function subscribeRealtime(){
             .select("*")
             .eq("post_id",postId)
             .eq("user_id",currentUser.id)
-            .single();
+            .maybeSingle();
 
           const btn = document.getElementById("like-btn-"+postId);
           if(btn){
