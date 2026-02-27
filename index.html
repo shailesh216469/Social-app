@@ -1,54 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Ultimate Social App</title>
+<meta charset="UTF-8" />
+<title>Ultimate Social App</title>
+<style>
+body { font-family: Arial; padding:20px; }
+#appSection { display:none; }
+button { margin:5px; padding:8px 12px; }
+</style>
 </head>
 <body>
 
-<h2>Ultimate Social App</h2>
+<h2>🔥 Ultimate Social App</h2>
 
-<button id="googleBtn">Login with Google</button>
-<button id="guestBtn">Guest Login</button>
+<div id="authSection">
+  <button id="googleBtn">Login with Google</button>
+  <button id="guestBtn">Guest Login</button>
+</div>
+
+<div id="appSection">
+  <p>Logged in as: <b id="userInfo"></b></p>
+  <button id="logoutBtn">Logout</button>
+</div>
 
 <script type="module">
 
-  console.log("Module Loaded");
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+const supabase = createClient(
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
 
-  const supabase = createClient(
-    "https://dgehzagvyrxbnnvgsiff.supabase.co",
-    "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
-  );
+const googleBtn = document.getElementById("googleBtn");
+const guestBtn = document.getElementById("guestBtn");
+const logoutBtn = document.getElementById("logoutBtn");
 
-  console.log("Supabase Ready");
+const authSection = document.getElementById("authSection");
+const appSection = document.getElementById("appSection");
+const userInfo = document.getElementById("userInfo");
 
-  const googleBtn = document.getElementById("googleBtn");
-  const guestBtn = document.getElementById("guestBtn");
+/* ================= LOGIN ================= */
 
-  googleBtn.addEventListener("click", async () => {
-    console.log("Google Clicked");
-
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin
-      }
-    });
+googleBtn.addEventListener("click", async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin }
   });
+});
 
-  guestBtn.addEventListener("click", async () => {
-    console.log("Guest Clicked");
+guestBtn.addEventListener("click", async () => {
+  await supabase.auth.signInAnonymously();
+});
 
-    const { error } = await supabase.auth.signInAnonymously();
+/* ================= LOGOUT ================= */
 
-    if (error) {
-      console.error(error);
-    } else {
-      console.log("Guest Logged In");
-    }
-  });
+logoutBtn.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+});
+
+/* ================= AUTO UI UPDATE ================= */
+
+async function checkUser() {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    authSection.style.display = "none";
+    appSection.style.display = "block";
+    userInfo.innerText = data.session.user.email || "Guest";
+  } else {
+    authSection.style.display = "block";
+    appSection.style.display = "none";
+  }
+}
+
+supabase.auth.onAuthStateChange(() => {
+  checkUser();
+});
+
+checkUser();
 
 </script>
 
