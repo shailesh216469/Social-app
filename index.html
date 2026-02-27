@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🔥 Ultimate Social App</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    body { font-family: Arial; padding: 20px; }
-    .card { background:#f2f2f2; padding:15px; margin:15px 0; border-radius:10px; }
-    button { padding:6px 10px; margin-top:5px; cursor:pointer; }
-    input { padding:6px; }
-  </style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔥 Ultimate Social App</title>
+
+<!-- IMPORTANT: Use UMD version -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<style>
+body { font-family: Arial; padding: 20px; }
+.card { background:#f2f2f2; padding:15px; margin:15px 0; border-radius:10px; }
+button { padding:6px 10px; margin-top:5px; cursor:pointer; }
+input { padding:6px; }
+</style>
 </head>
+
 <body>
 
 <h2>🔥 Ultimate Social App</h2>
@@ -33,25 +37,14 @@
 </div>
 
 <script>
+
+// ✅ Your Supabase credentials
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-checkUser();
-
-async function checkUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (user) {
-    document.getElementById("authSection").style.display = "none";
-    document.getElementById("appSection").style.display = "block";
-    document.getElementById("userInfo").innerText =
-      user.email ? user.email : "Guest";
-    loadPosts();
-    setupRealtime();
-  }
-}
+// ---------------- AUTH ----------------
 
 async function googleLogin() {
   await supabase.auth.signInWithOAuth({
@@ -68,6 +61,30 @@ async function logout() {
   location.reload();
 }
 
+// Make functions global (fixes not defined error)
+window.googleLogin = googleLogin;
+window.guestLogin = guestLogin;
+window.logout = logout;
+
+// ---------------- CHECK USER ----------------
+
+async function checkUser() {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (user) {
+    document.getElementById("authSection").style.display = "none";
+    document.getElementById("appSection").style.display = "block";
+    document.getElementById("userInfo").innerText =
+      user.email ? user.email : "Guest";
+    loadPosts();
+    setupRealtime();
+  }
+}
+
+checkUser();
+
+// ---------------- POSTS ----------------
+
 async function addPost() {
   const input = document.getElementById("postInput");
   const content = input.value.trim();
@@ -83,6 +100,10 @@ async function addPost() {
 
   input.value = "";
 }
+
+window.addPost = addPost;
+
+// ---------------- LOAD POSTS ----------------
 
 async function loadPosts() {
   const { data } = await supabase
@@ -127,6 +148,8 @@ async function loadPosts() {
   }
 }
 
+// ---------------- LIKE TOGGLE ----------------
+
 async function toggleLike(postId) {
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -153,6 +176,10 @@ async function toggleLike(postId) {
   }
 }
 
+window.toggleLike = toggleLike;
+
+// ---------------- COMMENTS ----------------
+
 async function addComment(postId) {
   const input = document.getElementById("comment-" + postId);
   const content = input.value.trim();
@@ -170,6 +197,10 @@ async function addComment(postId) {
   input.value = "";
 }
 
+window.addComment = addComment;
+
+// ---------------- REALTIME ----------------
+
 function setupRealtime() {
   supabase.channel("realtime")
     .on("postgres_changes",
@@ -186,6 +217,7 @@ function setupRealtime() {
     )
     .subscribe();
 }
+
 </script>
 
 </body>
