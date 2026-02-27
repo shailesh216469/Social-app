@@ -8,31 +8,63 @@
 
 <h2>🔥 Ultimate Social App</h2>
 
-<button id="googleBtn">Login with Google</button>
-<button id="guestBtn">Guest Login</button>
+<div id="authSection">
+  <button id="googleBtn">Login with Google</button>
+  <button id="guestBtn">Guest Login</button>
+</div>
+
+<div id="userSection" style="display:none;">
+  <p id="userInfo"></p>
+  <button id="logoutBtn">Logout</button>
+</div>
 
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-console.log("MODULE SCRIPT STARTED");
 
 const supabase = createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
+// Check session when page loads
+const { data: { session } } = await supabase.auth.getSession();
+
+if (session) {
+  showUser(session.user);
+}
+
+// Google Login
 document.getElementById("googleBtn").addEventListener("click", async () => {
-  console.log("Google clicked");
   await supabase.auth.signInWithOAuth({
-    provider: "google"
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin
+    }
   });
 });
 
+// Guest Login
 document.getElementById("guestBtn").addEventListener("click", async () => {
-  console.log("Guest clicked");
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) console.error(error);
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) {
+    alert(error.message);
+  } else {
+    showUser(data.user);
+  }
 });
+
+// Logout
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  location.reload();
+});
+
+function showUser(user) {
+  document.getElementById("authSection").style.display = "none";
+  document.getElementById("userSection").style.display = "block";
+  document.getElementById("userInfo").innerText =
+    "Logged in as: " + (user.email || "Guest User");
+}
 </script>
 
 </body>
