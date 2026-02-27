@@ -2,13 +2,17 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Supabase Test</title>
+  <title>Ultimate Social App</title>
 </head>
 <body>
 
-<button id="loginBtn">Login Test</button>
+<h2>Ultimate Social App</h2>
+
+<button id="googleBtn">Login with Google</button>
+<button id="guestBtn">Guest Login</button>
 
 <script type="module">
+
   console.log("Module Loaded");
 
   import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
@@ -18,13 +22,34 @@
     "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
   );
 
-  document.getElementById("loginBtn").addEventListener("click", async () => {
-    console.log("Login Clicked");
+  console.log("Supabase Ready");
+
+  const googleBtn = document.getElementById("googleBtn");
+  const guestBtn = document.getElementById("guestBtn");
+
+  googleBtn.addEventListener("click", async () => {
+    console.log("Google Clicked");
+
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin }
+      options: {
+        redirectTo: window.location.origin
+      }
     });
   });
+
+  guestBtn.addEventListener("click", async () => {
+    console.log("Guest Clicked");
+
+    const { error } = await supabase.auth.signInAnonymously();
+
+    if (error) {
+      console.error(error);
+    } else {
+      console.log("Guest Logged In");
+    }
+  });
+
 </script>
 
 </body>
