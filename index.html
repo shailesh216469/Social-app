@@ -10,20 +10,13 @@ body{
  background:#f3f4f6;
  padding:20px;
 }
-
 .card{
  background:white;
  padding:16px;
  border-radius:16px;
  margin-top:18px;
  box-shadow:0 4px 20px rgba(0,0,0,.08);
- transition:.2s;
 }
-
-.card:hover{
- transform:translateY(-2px);
-}
-
 button{
  padding:6px 10px;
  border:none;
@@ -32,35 +25,27 @@ button{
  margin:4px 4px 0 0;
  font-size:13px;
 }
-
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
 .like{background:#10b981;color:white;}
-
 textarea{
  width:100%;
  padding:8px;
  border-radius:8px;
  margin-top:5px;
 }
-
 .image-scroll{
  display:flex;
  overflow-x:auto;
  gap:8px;
- scroll-snap-type:x mandatory;
  margin-top:10px;
 }
-
 .image-scroll img{
  height:220px;
  border-radius:12px;
- scroll-snap-align:start;
  object-fit:cover;
 }
-
 .small{font-size:12px;color:gray;}
-.comment{margin-top:6px;font-size:13px;}
 </style>
 </head>
 <body>
@@ -227,12 +212,7 @@ window.deletePost=async(postId)=>{
  if(!post || post.user_id!==user.id)
   return alert("Not allowed");
 
- const {error}=await supabase
-  .from("posts")
-  .delete()
-  .eq("id",postId);
-
- if(error)return alert("Delete failed");
+ await supabase.from("posts").delete().eq("id",postId);
 };
 
 /* ================= LIKE ================= */
@@ -263,6 +243,7 @@ window.toggleLike=async(postId)=>{
    btn.dataset.liked="false";
    btn.dataset.count=count-1;
    btn.innerText=`Like (${count-1})`;
+
    await supabase.from("likes")
     .delete()
     .eq("post_id",postId)
@@ -271,6 +252,7 @@ window.toggleLike=async(postId)=>{
    btn.dataset.liked="true";
    btn.dataset.count=count+1;
    btn.innerText=`Unlike (${count+1})`;
+
    await supabase.from("likes")
     .insert([{post_id:postId,user_id:user.id}]);
  }
@@ -279,64 +261,47 @@ window.toggleLike=async(postId)=>{
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
 
-  // POSTS INSERT + DELETE
-  supabase
-    .channel('posts-live')
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'posts' },
-      payload => renderPost(payload.new)
-    )
-    .on(
-      'postgres_changes',
-      { event: 'DELETE', schema: 'public', table: 'posts' },
-      payload => {
+ // POSTS
+ supabase
+  .channel('posts-live')
+  .on('postgres_changes',
+      { event:'INSERT', schema:'public', table:'posts' },
+      payload=>renderPost(payload.new))
+  .on('postgres_changes',
+      { event:'DELETE', schema:'public', table:'posts' },
+      payload=>{
         const el=document.getElementById("post-"+payload.old.id);
         if(el) el.remove();
-      }
-    )
-    .subscribe();
-
-  // LIKES REALTIME (clean + stable)
-supabase
-  .channel('likes-live')
-  .on(
-    'postgres_changes',
-    { event: '*', schema: 'public', table: 'likes' },
-    async payload => {
-
-      const postId =
-        payload.new?.post_id || payload.old?.post_id;
-
-      if(!postId) return;
-
-      const postEl =
-        document.getElementById("post-" + postId);
-      if(!postEl) return;
-
-      const btn =
-        postEl.querySelector(".like");
-      if(!btn) return;
-
-      // get updated count
-      const { count } = await supabase
-        .from("likes")
-        .select("*", { count: "exact", head: true })
-        .eq("post_id", postId);
-
-      btn.dataset.count = count || 0;
-
-      // keep current button state
-      const liked =
-        btn.dataset.liked === "true";
-
-      btn.innerText =
-        `${liked ? "Unlike" : "Like"} (${count || 0})`;
-    }
-  )
+      })
   .subscribe();
 
+ // LIKES
+ supabase
+  .channel('likes-live')
+  .on('postgres_changes',
+      { event:'*', schema:'public', table:'likes' },
+      async payload=>{
+        const postId=payload.new?.post_id||payload.old?.post_id;
+        if(!postId)return;
+
+        const postEl=document.getElementById("post-"+postId);
+        if(!postEl)return;
+
+        const btn=postEl.querySelector(".like");
+        if(!btn)return;
+
+        const {count}=await supabase
+          .from("likes")
+          .select("*",{count:"exact",head:true})
+          .eq("post_id",postId);
+
+        const liked=btn.dataset.liked==="true";
+        btn.dataset.count=count||0;
+        btn.innerText=`${liked?"Unlike":"Like"} (${count||0})`;
+      })
+  .subscribe();
 }
+
 init();
 });
 </script>
