@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Pro - Ultimate Stable</title>
+<title>Social App Pro - Clean Stable</title>
 
 <style>
 body{
@@ -50,11 +50,16 @@ textarea{
  padding:8px;
  border-radius:8px;
 }
+input{
+ padding:6px;
+ border-radius:6px;
+ border:1px solid #ddd;
+}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Pro - Ultimate Stable</h2>
+<h2>🔥 Social App Pro - Clean Stable</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -144,7 +149,7 @@ function renderPost(post){
   loadComments(post.id);
 }
 
-/* ================= COMMENTS ================= */
+/* ================= ADD COMMENT ================= */
 window.addComment = async(postId)=>{
 
   if(!user) return alert("Login first");
@@ -163,55 +168,64 @@ window.addComment = async(postId)=>{
   input.value="";
 };
 
+/* ================= DELETE COMMENT ================= */
 window.deleteComment = async(commentId)=>{
+
   await supabase.from("comments")
     .delete()
     .eq("id",commentId);
+
+  // instant remove from UI
+  const div=document.getElementById("comment-"+commentId);
+  if(div) div.remove();
 };
 
-/* ===== EDIT COMMENT ===== */
+/* ================= EDIT COMMENT ================= */
 window.editComment = function(commentId){
 
-  const div = document.getElementById("comment-"+commentId);
-  const textDiv = div.querySelector(".text");
+  const div=document.getElementById("comment-"+commentId);
+  const textSpan=div.querySelector(".text");
+  const username=div.dataset.username;
 
-  const oldText = textDiv.innerText;
+  const oldText=textSpan.innerText;
 
-  div.dataset.original = oldText;
-
-  div.innerHTML = `
-    <input id="edit-${commentId}"
-           value="${oldText}"
-           style="width:60%">
-    <button onclick="saveEdit('${commentId}')">
-      Save
-    </button>
-    <button onclick="cancelEdit('${commentId}')">
-      Cancel
-    </button>
+  div.innerHTML=`
+    <div>
+      <b>${username}:</b>
+      <input id="edit-${commentId}"
+             value="${oldText}"
+             style="width:60%">
+    </div>
+    <div>
+      <button onclick="saveEdit('${commentId}')">
+        Save
+      </button>
+      <button onclick="cancelEdit('${commentId}','${oldText}','${username}')">
+        Cancel
+      </button>
+    </div>
   `;
 };
 
-window.cancelEdit = function(commentId){
+window.cancelEdit = function(commentId,oldText,username){
 
-  const div = document.getElementById("comment-"+commentId);
-  const original = div.dataset.original;
+  const div=document.getElementById("comment-"+commentId);
 
-  div.innerHTML = `
+  div.innerHTML=`
     <div>
-      <b>You:</b>
-      <span class="text">${original}</span>
+      <b>${username}:</b>
+      <span class="text">${oldText}</span>
     </div>
     <div>
-      <button onclick="editComment('${commentId}')">
-        ✏️
-      </button>
+      <button onclick="editComment('${commentId}')">✏️</button>
       <button class="delete"
         onclick="deleteComment('${commentId}')">
         ❌
       </button>
     </div>
   `;
+
+  div.dataset.username=username;
 };
 
 window.saveEdit = async(commentId)=>{
@@ -252,7 +266,9 @@ async function loadComments(postId){
 
     box.innerHTML+=`
       <div class="comment-item"
-           id="comment-${c.id}">
+           id="comment-${c.id}"
+           data-username="${c.username||"User"}">
+
         <div>
           <b>${c.username||"User"}:</b>
           <span class="text">
@@ -260,6 +276,7 @@ async function loadComments(postId){
           </span>
           ${edited}
         </div>
+
         ${
           user && user.id===c.user_id
           ? `<div>
