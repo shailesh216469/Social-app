@@ -41,7 +41,7 @@ textarea{
  margin-top:10px;
 }
 .image-scroll img{
- height:220px;
+ height:200px;
  border-radius:12px;
  object-fit:cover;
 }
@@ -79,24 +79,7 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* ================= TIME ================= */
-function timeAgo(date){
- const seconds=Math.floor((new Date()-new Date(date))/1000);
- const intervals=[
-  {label:"y",sec:31536000},
-  {label:"mo",sec:2592000},
-  {label:"d",sec:86400},
-  {label:"h",sec:3600},
-  {label:"m",sec:60}
- ];
- for(const i of intervals){
-  const count=Math.floor(seconds/i.sec);
-  if(count>0)return count+i.label+" ago";
- }
- return "just now";
-}
-
-/* ================= AUTH ================= */
+/* ================= INIT ================= */
 async function init(){
  const {data}=await supabase.auth.getUser();
  user=data.user;
@@ -119,6 +102,23 @@ function updateUI(){
 googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
 guestBtn.onclick=()=>supabase.auth.signInAnonymously();
 logoutBtn.onclick=async()=>{await supabase.auth.signOut();location.reload();};
+
+/* ================= TIME ================= */
+function timeAgo(date){
+ const seconds=Math.floor((new Date()-new Date(date))/1000);
+ const intervals=[
+  {label:"y",sec:31536000},
+  {label:"mo",sec:2592000},
+  {label:"d",sec:86400},
+  {label:"h",sec:3600},
+  {label:"m",sec:60}
+ ];
+ for(const i of intervals){
+  const count=Math.floor(seconds/i.sec);
+  if(count>0)return count+i.label+" ago";
+ }
+ return "just now";
+}
 
 /* ================= CREATE POST ================= */
 postBtn.onclick=async()=>{
@@ -168,8 +168,8 @@ async function renderPost(post){
   imagesHTML+=`</div>`;
  }
 
- const liked=await isLiked(post.id);
- const likeCount=await countLikes(post.id);
+ const likeCount = await getLikeCount(post.id);
+ const liked = await checkUserLiked(post.id);
 
  const div=document.createElement("div");
  div.className="card";
@@ -180,16 +180,10 @@ async function renderPost(post){
  <div class="small">${timeAgo(post.created_at)}</div>
  <div>${post.content||""}</div>
  ${imagesHTML}
-
  <div>
-  <button 
-   class="like" 
-   data-liked="${liked}"
-   data-count="${likeCount}"
-   onclick="toggleLike('${post.id}')">
+  <button class="like" onclick="toggleLike('${post.id}')">
    ${liked?"Unlike":"Like"} (${likeCount})
   </button>
-
   ${user && user.id===post.user_id ?
    `<button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
    :""}
@@ -215,39 +209,63 @@ window.deletePost=async(postId)=>{
  await supabase.from("posts").delete().eq("id",postId);
 };
 
-/* ================= LIKE ================= */
-async function isLiked(postId){
- if(!user)return false;
- const {data}=await supabase.from("likes")
-  .select("id")
-  .eq("post_id",postId)
-  .eq("user_id",user.id);
- return data?.length>0;
-}
+/* ================= LIKE SYSTEM ================= */
+window.toggleLike=async(postId)=>{
+ if(!user)return;
 
-async function countLikes(postId){
- const {count}=await supabase.from("likes")
+ const { data } = await supabase
+   .from("likes")
+   .select("id")
+   .eq("post_id", postId)
+   .eq("user_id", user.id)
+   .maybeSingle();
+
+ if (data) {
+   await supabase
+     .from("likes")
+     .delete()
+     .eq("post_id", postId)
+     .eq("user_id", user.id);
+ } else {
+   await supabase
+     .from("likes")
+     .insert([{ post_id: postId, user_id: user.id }]);
+ }
+
+ // ❌ No UI update here
+};
+
+async function getLikeCount(postId){
+ const {count}=await supabase
+  .from("likes")
   .select("*",{count:"exact",head:true})
   .eq("post_id",postId);
  return count||0;
 }
 
-window.toggleLike=async(postId)=>{
- if(!user)return;
+async function checkUserLiked(postId){
+ if(!user)return false;
+ const {data}=await supabase
+  .from("likes")
+  .select("id")
+  .eq("post_id",postId)
+  .eq("user_id",user.id)
+  .maybeSingle();
+ return !!data;
+}
 
- const btn=document.querySelector(`#post-${postId} .like`);
- const liked=btn.dataset.liked==="true";
+async function updateLikeUI(postId){
+ const postEl=document.getElementById("post-"+postId);
+ if(!postEl)return;
 
- if(liked){
-   await supabase.from("likes")
-    .delete()
-    .eq("post_id",postId)
-    .eq("user_id",user.id);
- }else{
-   await supabase.from("likes")
-    .insert([{post_id:postId,user_id:user.id}]);
- }
-};
+ const btn=postEl.querySelector(".like");
+ if(!btn)return;
+
+ const count=await getLikeCount(postId);
+ const liked=await checkUserLiked(postId);
+
+ btn.innerText=`${liked?"Unlike":"Like"} (${count})`;
+}
 
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
@@ -266,53 +284,20 @@ function subscribeRealtime(){
       })
   .subscribe();
 
- // LIKE INSERT
+ // FACEBOOK STYLE LIKE REALTIME
  supabase
-  .channel('likes-insert')
+  .channel('likes-facebook-style')
   .on('postgres_changes',
-      { event:'INSERT', schema:'public', table:'likes' },
+      { event:'*', schema:'public', table:'likes' },
       async payload=>{
-        await refreshLike(payload.new.post_id);
+        const postId =
+          payload.new?.post_id ||
+          payload.old?.post_id;
+
+        if(!postId) return;
+        await updateLikeUI(postId);
       })
   .subscribe();
-
- // LIKE DELETE
- supabase
-  .channel('likes-delete')
-  .on('postgres_changes',
-      { event:'DELETE', schema:'public', table:'likes' },
-      async payload=>{
-        await refreshLike(payload.old.post_id);
-      })
-  .subscribe();
-}
-
-async function refreshLike(postId){
- const postEl=document.getElementById("post-"+postId);
- if(!postEl)return;
-
- const btn=postEl.querySelector(".like");
- if(!btn)return;
-
- const {count}=await supabase
-  .from("likes")
-  .select("*",{count:"exact",head:true})
-  .eq("post_id",postId);
-
- let isLiked=false;
- if(user){
-  const {data}=await supabase
-   .from("likes")
-   .select("id")
-   .eq("post_id",postId)
-   .eq("user_id",user.id);
-
-  isLiked=data?.length>0;
- }
-
- btn.dataset.count=count||0;
- btn.dataset.liked=isLiked;
- btn.innerText=`${isLiked?"Unlike":"Like"} (${count||0})`;
 }
 
 init();
