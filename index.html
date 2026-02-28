@@ -11,14 +11,8 @@ body{font-family:Arial;padding:20px;background:#f4f4f4;transition:0.3s;}
 .dark .post{background:#1e1e1e;}
 button{margin-right:5px;margin-top:5px;}
 .small{font-size:12px;opacity:0.7;}
-.comment-box{margin-top:8px;padding-left:10px;border-left:2px solid #ccc;}
-.comment-input{width:100%;margin-top:5px;}
-.comment-item{margin-bottom:5px;}
-.edit-area{width:100%;margin-top:5px;}
-.image-preview{margin-top:10px;}
-.image-preview img{max-width:100%;margin-top:5px;border-radius:8px;}
-.liked{background:red;color:white;}
-.not-liked{background:#ddd;}
+.image-preview img{max-width:100%;margin-top:8px;border-radius:8px;}
+input[type="file"]{margin-top:10px;}
 </style>
 </head>
 <body>
@@ -33,12 +27,12 @@ button{margin-right:5px;margin-top:5px;}
 <hr>
 
 <textarea id="postInput" placeholder="Write something..."></textarea>
-<br><br>
-
+<br>
 <input type="file" id="imageInput" multiple accept="image/*">
-<br><br>
-
+<br>
 <button id="postBtn">Post</button>
+
+<hr>
 
 <div id="posts"></div>
 
@@ -54,6 +48,8 @@ const supabase = window.supabase.createClient(
 
 let currentUser=null;
 
+/* ================= TIME FORMAT ================= */
+
 function timeAgo(dateString){
   const now=new Date();
   const past=new Date(dateString);
@@ -68,24 +64,43 @@ function timeAgo(dateString){
   return past.toLocaleDateString();
 }
 
-async function init(){
-  const { data } = await supabase.auth.getUser();
-  currentUser=data.user;
-  loadPosts();
-  subscribeRealtime();
-}
+/* ================= IMAGE COMPRESSION ================= */
 
-function toggleDark(){
-  document.body.classList.toggle("dark");
-}
+async function compressImage(file){
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.readAsDataURL(file);
 
-async function login(){
-  await supabase.auth.signInWithOAuth({provider:'google'});
-}
+    reader.onload=function(event){
+      const img=new Image();
+      img.src=event.target.result;
 
-async function logout(){
-  await supabase.auth.signOut();
-  location.reload();
+      img.onload=function(){
+
+        const canvas=document.createElement("canvas");
+        const ctx=canvas.getContext("2d");
+
+        const MAX_WIDTH=1080;
+
+        let width=img.width;
+        let height=img.height;
+
+        if(width>MAX_WIDTH){
+          height=height*(MAX_WIDTH/width);
+          width=MAX_WIDTH;
+        }
+
+        canvas.width=width;
+        canvas.height=height;
+
+        ctx.drawImage(img,0,0,width,height);
+
+        canvas.toBlob(function(blob){
+          resolve(blob);
+        },"image/jpeg",0.7);
+      };
+    };
+  });
 }
 
 /* ================= IMAGE UPLOAD ================= */
@@ -96,11 +111,15 @@ async function uploadImages(files){
 
   for(const file of files){
 
-    const fileName=Date.now()+"-"+file.name;
+    const compressed=await compressImage(file);
+
+    const fileName=Date.now()+"-"+Math.random().toString(36).substring(2)+".jpg";
 
     await supabase.storage
       .from("post-images")
-      .upload(fileName,file);
+      .upload(fileName,compressed,{
+        contentType:"image/jpeg"
+      });
 
     const { data } = supabase.storage
       .from("post-images")
@@ -110,6 +129,24 @@ async function uploadImages(files){
   }
 
   return urls;
+}
+
+/* ================= AUTH ================= */
+
+async function init(){
+  const { data } = await supabase.auth.getUser();
+  currentUser=data.user;
+  loadPosts();
+  subscribeRealtime();
+}
+
+async function login(){
+  await supabase.auth.signInWithOAuth({provider:'google'});
+}
+
+async function logout(){
+  await supabase.auth.signOut();
+  location.reload();
 }
 
 /* ================= CREATE POST ================= */
@@ -143,6 +180,7 @@ async function createPost(){
 /* ================= LOAD POSTS ================= */
 
 async function loadPosts(){
+
   const { data:posts } = await supabase
     .from("posts")
     .select("*")
@@ -150,9 +188,7 @@ async function loadPosts(){
 
   document.getElementById("posts").innerHTML="";
 
-  for(const post of posts){
-    renderPost(post);
-  }
+  posts.forEach(post=>renderPost(post));
 }
 
 function renderPost(post){
@@ -171,7 +207,7 @@ function renderPost(post){
   div.innerHTML=`
     <b>${post.username}</b>
     <div class="small">${timeAgo(post.created_at)}</div>
-    <div>${post.content || ""}</div>
+    <div>${post.content||""}</div>
     ${imagesHTML}
   `;
 
@@ -188,6 +224,12 @@ function subscribeRealtime(){
       payload=>renderPost(payload.new)
     )
     .subscribe();
+}
+
+/* ================= DARK MODE ================= */
+
+function toggleDark(){
+  document.body.classList.toggle("dark");
 }
 
 /* ================= BINDINGS ================= */
