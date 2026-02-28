@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App v3.2</title>
+<title>Ultimate Social App v3.3 Stable</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;transition:.3s;}
@@ -13,11 +13,9 @@ button{padding:6px 12px;border:none;border-radius:10px;cursor:pointer;margin-rig
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
 .like-btn{background:#e5e7eb;}
-.liked{background:#ef4444;color:white;}
 textarea{width:100%;padding:10px;border-radius:12px;margin-top:5px;}
 .small{font-size:12px;opacity:.6;}
 .comment-box{margin-top:10px;padding-left:10px;border-left:2px solid #ddd;}
-
 .image-grid{display:grid;gap:6px;margin-top:10px;}
 .image-grid.single{grid-template-columns:1fr;}
 .image-grid.two{grid-template-columns:1fr 1fr;}
@@ -27,7 +25,7 @@ textarea{width:100%;padding:10px;border-radius:12px;margin-top:5px;}
 </head>
 <body>
 
-<h2>🔥 Ultimate Social App v3.2</h2>
+<h2>🔥 Ultimate Social App v3.3</h2>
 
 <div>
 <span id="userEmail"></span>
@@ -57,9 +55,10 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* ================= TIME ================= */
+/* ========= TIME ========= */
 
 function timeAgo(d){
+ if(!d) return "";
  const s=Math.floor((Date.now()-new Date(d))/1000);
  if(s<60)return"Just now";
  if(s<3600)return Math.floor(s/60)+"m ago";
@@ -73,7 +72,7 @@ setInterval(()=>{
  });
 },30000);
 
-/* ================= AUTH ================= */
+/* ========= AUTH ========= */
 
 async function init(){
  const {data}=await supabase.auth.getUser();
@@ -107,49 +106,38 @@ logoutBtn.onclick=async()=>{
  location.reload();
 };
 
-/* ================= IMAGE COMPRESSION ================= */
-
-async function compressImage(file){
- return new Promise(res=>{
-  const r=new FileReader();
-  r.readAsDataURL(file);
-  r.onload=e=>{
-   const img=new Image();
-   img.src=e.target.result;
-   img.onload=()=>{
-    const canvas=document.createElement("canvas");
-    const MAX=1080;
-    let w=img.width,h=img.height;
-    if(w>MAX){h=h*(MAX/w);w=MAX;}
-    canvas.width=w;canvas.height=h;
-    canvas.getContext("2d").drawImage(img,0,0,w,h);
-    canvas.toBlob(b=>res(b),"image/jpeg",0.7);
-   }
-  }
- })
-}
-
-/* ================= CREATE POST ================= */
+/* ========= CREATE POST ========= */
 
 postBtn.onclick=async()=>{
  if(!user)return alert("Login first");
 
- const content=postInput.value;
+ const content=postInput.value.trim();
  const files=imageInput.files;
+
+ if(!content && files.length===0){
+   alert("Post cannot be empty");
+   return;
+ }
+
  let urls=[];
 
  for(const f of files){
-  const blob=await compressImage(f);
   const name=Date.now()+"-"+Math.random()+".jpg";
-  await supabase.storage.from("post-images").upload(name,blob);
+  await supabase.storage.from("post-images").upload(name,f);
   const {data}=supabase.storage.from("post-images").getPublicUrl(name);
   urls.push(data.publicUrl);
  }
 
- const {data}=await supabase.from("posts")
+ const {data,error}=await supabase.from("posts")
   .insert([{content,images:urls,user_id:user.id,username:user.email}])
   .select()
   .single();
+
+ if(error){
+   console.error("Insert error:",error);
+   alert("Error posting");
+   return;
+ }
 
  renderPost(data);
 
@@ -157,7 +145,7 @@ postBtn.onclick=async()=>{
  imageInput.value="";
 };
 
-/* ================= RENDER POST ================= */
+/* ========= RENDER ========= */
 
 function renderPost(post){
 
@@ -178,7 +166,7 @@ function renderPost(post){
  div.id="post-"+post.id;
 
  div.innerHTML=`
-  <b>${post.username}</b>
+  <b>${post.username||"User"}</b>
   <div class="small time" data-time="${post.created_at}">
    ${timeAgo(post.created_at)}
   </div>
@@ -195,7 +183,7 @@ function renderPost(post){
   ${grid}
 
   <br>
-  <button id="like-${post.id}" class="like-btn">Like</button>
+  <button id="like-${post.id}">Like</button>
   <span id="like-count-${post.id}">0</span>
 
   <div id="comments-${post.id}"></div>
@@ -208,30 +196,32 @@ function renderPost(post){
  loadComments(post.id);
 }
 
-/* ================= EDIT POST ================= */
+/* ========= LOAD POSTS (SAFE ORDER) ========= */
 
-window.editPost=id=>{
- const el=document.getElementById("post-text-"+id);
- const old=el.innerText;
- el.innerHTML=`<textarea id="edit-post-${id}">${old}</textarea>
- <button onclick="savePost('${id}')">Save</button>`;
+async function loadPosts(){
+
+ let {data,error}=await supabase
+  .from("posts")
+  .select("*")
+  .order("created_at",{ascending:false});
+
+ if(error){
+   console.warn("Order failed, loading without order");
+   const res=await supabase.from("posts").select("*");
+   data=res.data;
+ }
+
+ if(!data){
+   console.error("No posts returned");
+   return;
+ }
+
+ data.forEach(renderPost);
 }
 
-window.savePost=async id=>{
- const val=document.getElementById("edit-post-"+id).value;
- await supabase.from("posts").update({content:val}).eq("id",id);
- document.getElementById("post-text-"+id).innerText=val;
-}
-
-window.deletePost=async id=>{
- await supabase.from("posts").delete().eq("id",id);
- document.getElementById("post-"+id)?.remove();
-}
-
-/* ================= LIKE ================= */
+/* ========= LIKE ========= */
 
 async function initLike(postId){
- const btn=document.getElementById("like-"+postId);
 
  const {count}=await supabase.from("likes")
   .select("*",{count:"exact",head:true})
@@ -240,7 +230,9 @@ async function initLike(postId){
 
  document.getElementById("like-count-"+postId).innerText=count||0;
 
- btn.onclick=async()=>{
+ document.getElementById("like-"+postId).onclick=async()=>{
+  if(!user)return;
+
   const {data}=await supabase.from("likes")
    .select("*")
    .eq("post_id",postId)
@@ -258,7 +250,7 @@ async function initLike(postId){
  };
 }
 
-/* ================= COMMENTS ================= */
+/* ========= COMMENTS ========= */
 
 window.addComment=async postId=>{
  const input=document.getElementById("comment-input-"+postId);
@@ -276,13 +268,9 @@ window.addComment=async postId=>{
 
 function appendComment(c){
  const box=document.getElementById("comments-"+c.post_id);
-
  box.innerHTML+=`
   <div id="comment-${c.id}" class="comment-box">
    <b>${c.username}</b>
-   <div class="small time" data-time="${c.created_at}">
-    ${timeAgo(c.created_at)}
-   </div>
    <div>${c.content}</div>
    ${
     user && String(user.id)===String(c.user_id)
@@ -298,15 +286,29 @@ window.deleteComment=async id=>{
  document.getElementById("comment-"+id)?.remove();
 }
 
-async function loadComments(postId){
- const {data}=await supabase.from("comments")
-  .select("*")
-  .eq("post_id",postId)
-  .order("created_at",{ascending:true});
- data.forEach(appendComment);
+/* ========= DELETE POST ========= */
+
+window.deletePost=async id=>{
+ await supabase.from("posts").delete().eq("id",id);
+ document.getElementById("post-"+id)?.remove();
 }
 
-/* ================= REALTIME ================= */
+/* ========= EDIT ========= */
+
+window.editPost=id=>{
+ const el=document.getElementById("post-text-"+id);
+ const old=el.innerText;
+ el.innerHTML=`<textarea id="edit-${id}">${old}</textarea>
+ <button onclick="savePost('${id}')">Save</button>`;
+}
+
+window.savePost=async id=>{
+ const val=document.getElementById("edit-"+id).value;
+ await supabase.from("posts").update({content:val}).eq("id",id);
+ document.getElementById("post-text-"+id).innerText=val;
+}
+
+/* ========= REALTIME ========= */
 
 function subscribeRealtime(){
 
