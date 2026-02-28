@@ -78,6 +78,7 @@ const supabase = window.supabase.createClient(
 );
 
 let user=null;
+let likeProcessing={};
 
 /* ================= INIT ================= */
 async function init(){
@@ -215,6 +216,9 @@ window.deletePost=async(postId)=>{
 window.toggleLike=async(postId)=>{
  if(!user)return;
 
+ if(likeProcessing[postId]) return;
+ likeProcessing[postId]=true;
+
  const { data } = await supabase
    .from("likes")
    .select("id")
@@ -233,9 +237,11 @@ window.toggleLike=async(postId)=>{
      .from("likes")
      .insert([{ post_id: postId, user_id: user.id }]);
  }
+
+ likeProcessing[postId]=false;
 };
 
-/* ================= REALTIME (FACEBOOK STYLE) ================= */
+/* ================= REALTIME ================= */
 function subscribeRealtime(){
 
  // POSTS
@@ -254,28 +260,24 @@ function subscribeRealtime(){
 
  // LIKE INSERT + DELETE
  supabase
-  .channel('likes-facebook')
+  .channel('likes-live')
   .on('postgres_changes',
       { event:'INSERT', schema:'public', table:'likes' },
-      payload=>{
-        updateLikeCount(payload.new.post_id, +1);
-      })
+      payload=>updateLikeCount(payload.new.post_id,+1))
   .on('postgres_changes',
       { event:'DELETE', schema:'public', table:'likes' },
-      payload=>{
-        updateLikeCount(payload.old.post_id, -1);
-      })
+      payload=>updateLikeCount(payload.old.post_id,-1))
   .subscribe();
 }
 
-function updateLikeCount(postId, change){
+function updateLikeCount(postId,change){
  const postEl=document.getElementById("post-"+postId);
  if(!postEl) return;
 
  const btn=postEl.querySelector(".like");
  if(!btn) return;
 
- const current=parseInt(btn.innerText.match(/\d+/)?.[0] || 0);
+ const current=parseInt(btn.innerText.match(/\d+/)?.[0]||0);
  const newCount=current+change;
 
  btn.innerText=`Like (${newCount})`;
