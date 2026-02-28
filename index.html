@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Realtime Comment Delete</title>
+<title>Social App Ultimate Stable</title>
 
 <style>
 body{
@@ -50,7 +50,7 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App Realtime Comment Delete</h2>
+<h2>🔥 Social App Ultimate Stable</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -69,15 +69,15 @@ const supabase = window.supabase.createClient(
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let user=null;
+let user = null;
 
 /* ================= INIT ================= */
 async function init(){
   const { data } = await supabase.auth.getUser();
-  user=data.user;
+  user = data.user;
 
   supabase.auth.onAuthStateChange((e,session)=>{
-    user=session?.user||null;
+    user = session?.user || null;
   });
 
   await loadPosts();
@@ -89,23 +89,17 @@ init();
 document.getElementById("postBtn")
 .addEventListener("click", async ()=>{
 
-  if(!user){
-    alert("Login first");
-    return;
-  }
+  if(!user) return alert("Login first");
 
   const content =
     document.getElementById("postInput").value.trim();
 
-  if(!content){
-    alert("Post cannot be empty");
-    return;
-  }
+  if(!content) return alert("Post empty");
 
   await supabase.from("posts").insert([{
-    content: content,
-    user_id: user.id,
-    username: user.email
+    content:content,
+    user_id:user.id,
+    username:user.email
   }]);
 
   document.getElementById("postInput").value="";
@@ -131,12 +125,16 @@ function renderPost(post){
   div.id="post-"+post.id;
 
   div.innerHTML=`
-    <b>${post.username || "User"}</b>
-    <div>${post.content || ""}</div>
+    <b>${post.username||"User"}</b>
+    <div>${post.content||""}</div>
+
+    <button class="like" id="like-${post.id}">
+      Loading...
+    </button>
 
     <div class="comment-box">
       <input id="comment-input-${post.id}" 
-             placeholder="Write a comment..."
+             placeholder="Write comment..."
              style="width:70%">
       <button onclick="addComment('${post.id}')">
         Send
@@ -147,16 +145,75 @@ function renderPost(post){
   `;
 
   feed.appendChild(div);
+
+  document
+    .getElementById("like-"+post.id)
+    .addEventListener("click",()=>toggleLike(post.id));
+
+  updateLikeUI(post.id);
   loadComments(post.id);
 }
 
-/* ================= ADD COMMENT ================= */
+/* ================= LIKE SYSTEM ================= */
+async function updateLikeUI(postId){
+
+  const btn=document.getElementById("like-"+postId);
+  if(!btn) return;
+
+  const { count } = await supabase
+    .from("likes")
+    .select("*",{count:"exact",head:true})
+    .eq("post_id",postId)
+    .eq("active",true);
+
+  let liked=false;
+
+  if(user){
+    const { data } = await supabase
+      .from("likes")
+      .select("active")
+      .eq("post_id",postId)
+      .eq("user_id",user.id)
+      .single();
+
+    liked = data?.active === true;
+  }
+
+  btn.innerText =
+    `${liked?"Unlike":"Like"} (${count||0})`;
+}
+
+async function toggleLike(postId){
+
+  if(!user) return alert("Login first");
+
+  const { data } = await supabase
+    .from("likes")
+    .select("*")
+    .eq("post_id",postId)
+    .eq("user_id",user.id)
+    .single();
+
+  if(data){
+    await supabase
+      .from("likes")
+      .update({active:!data.active})
+      .eq("id",data.id);
+  }else{
+    await supabase
+      .from("likes")
+      .insert([{
+        post_id:postId,
+        user_id:user.id,
+        active:true
+      }]);
+  }
+}
+
+/* ================= COMMENTS ================= */
 window.addComment = async(postId)=>{
 
-  if(!user){
-    alert("Login first");
-    return;
-  }
+  if(!user) return alert("Login first");
 
   const input=document.getElementById("comment-input-"+postId);
   const content=input.value.trim();
@@ -172,7 +229,6 @@ window.addComment = async(postId)=>{
   input.value="";
 };
 
-/* ================= DELETE COMMENT ================= */
 window.deleteComment = async(commentId)=>{
   await supabase
     .from("comments")
@@ -180,7 +236,6 @@ window.deleteComment = async(commentId)=>{
     .eq("id",commentId);
 };
 
-/* ================= LOAD COMMENTS ================= */
 async function loadComments(postId){
 
   const { data } = await supabase
@@ -217,26 +272,49 @@ async function loadComments(postId){
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
 
-  const channel = supabase.channel("comment-sync");
+  const channel=supabase.channel("global-sync");
 
+  // POSTS
   channel.on(
     "postgres_changes",
-    {event:"*",schema:"public",table:"comments"},
+    {event:"*",schema:"public",table:"posts"},
+    ()=>loadPosts()
+  );
+
+  // LIKES
+  channel.on(
+    "postgres_changes",
+    {event:"*",schema:"public",table:"likes"},
     payload=>{
       const postId =
         payload.new?.post_id ||
         payload.old?.post_id;
+      if(postId) updateLikeUI(postId);
+    }
+  );
+
+  // COMMENTS
+  channel.on(
+    "postgres_changes",
+    {event:"*",schema:"public",table:"comments"},
+    payload=>{
+
+      console.log("COMMENT EVENT:",payload);
+
+      let postId=null;
+
+      if(payload.new && payload.new.post_id){
+        postId=payload.new.post_id;
+      }
+
+      if(payload.old && payload.old.post_id){
+        postId=payload.old.post_id;
+      }
 
       if(postId){
         loadComments(postId);
       }
     }
-  );
-
-  channel.on(
-    "postgres_changes",
-    {event:"*",schema:"public",table:"posts"},
-    ()=>loadPosts()
   );
 
   channel.subscribe(status=>{
