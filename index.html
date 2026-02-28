@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App vFinal Stable</title>
+<title>Ultimate Social App vStable</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;}
@@ -49,7 +49,7 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* ================= TIME ================= */
+/* TIME FORMAT */
 function timeAgo(date){
  const seconds=Math.floor((new Date()-new Date(date))/1000);
  const intervals=[
@@ -66,7 +66,7 @@ function timeAgo(date){
  return "just now";
 }
 
-/* ================= AUTH ================= */
+/* AUTH */
 async function init(){
  const {data}=await supabase.auth.getUser();
  user=data.user;
@@ -90,7 +90,7 @@ googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
 guestBtn.onclick=()=>supabase.auth.signInAnonymously();
 logoutBtn.onclick=async()=>{await supabase.auth.signOut();location.reload();};
 
-/* ================= CREATE POST ================= */
+/* CREATE POST */
 postBtn.onclick=async()=>{
  if(!user)return alert("Login first");
 
@@ -112,7 +112,7 @@ postBtn.onclick=async()=>{
  imageInput.value="";
 };
 
-/* ================= LOAD POSTS ================= */
+/* LOAD POSTS */
 async function loadPosts(){
  const {data}=await supabase
   .from("posts")
@@ -123,7 +123,7 @@ async function loadPosts(){
  data?.forEach(renderPost);
 }
 
-/* ================= RENDER POST ================= */
+/* RENDER POST */
 async function renderPost(post){
 
  if(document.getElementById("post-"+post.id))return;
@@ -170,14 +170,14 @@ async function renderPost(post){
  loadComments(post.id);
 }
 
-/* ================= DELETE POST ================= */
+/* DELETE POST (NO STORAGE DELETE) */
 window.deletePost=async(postId)=>{
 
  if(!user) return alert("Login required");
 
  const { data: post } = await supabase
    .from("posts")
-   .select("*")
+   .select("user_id")
    .eq("id", postId)
    .single();
 
@@ -185,7 +185,6 @@ window.deletePost=async(postId)=>{
    return alert("Not allowed");
  }
 
- // delete DB row FIRST
  const { error } = await supabase
    .from("posts")
    .delete()
@@ -197,22 +196,10 @@ window.deletePost=async(postId)=>{
    return alert("Delete failed");
  }
 
- // remove from UI immediately
  document.getElementById("post-" + postId)?.remove();
-
- // try to delete storage safely (ignore error)
- if (post.images?.length) {
-   try {
-     await supabase.storage
-       .from("post-images")
-       .remove(post.images);
-   } catch (e) {
-     console.log("Storage cleanup skipped:", e);
-   }
- }
 };
 
-/* ================= LIKE ================= */
+/* LIKE SYSTEM */
 async function isLiked(postId){
  if(!user)return false;
  const {data}=await supabase.from("likes")
@@ -247,7 +234,7 @@ window.toggleLike=async(postId)=>{
  loadPosts();
 };
 
-/* ================= COMMENTS ================= */
+/* COMMENTS */
 window.addComment=async(postId)=>{
  if(!user)return;
  const input=document.getElementById("comment-input-"+postId);
@@ -294,7 +281,7 @@ window.deleteComment=async(id,postId)=>{
  loadComments(postId);
 };
 
-/* ================= REALTIME ================= */
+/* REALTIME */
 function subscribeRealtime(){
 
  supabase.channel("posts")
