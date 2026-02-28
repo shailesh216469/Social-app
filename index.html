@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Pro - Stable Realtime</title>
+<title>Social App Pro - Ultimate</title>
 
 <style>
 body{
@@ -41,16 +41,27 @@ textarea{
 }
 .comment-item{
  font-size:13px;
- padding:4px 0;
+ padding:6px 0;
  display:flex;
  justify-content:space-between;
  align-items:center;
+ transition:0.2s;
+}
+.comment-item.editing{
+ background:#eef2ff;
+ padding:8px;
+ border-radius:8px;
+}
+.small{
+ font-size:11px;
+ color:gray;
+ margin-left:6px;
 }
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Pro - Stable Realtime</h2>
+<h2>🔥 Social App Pro - Ultimate</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -70,6 +81,7 @@ const supabase = window.supabase.createClient(
 );
 
 let user=null;
+let editingCommentId=null;
 
 /* ================= INIT ================= */
 async function init(){
@@ -157,64 +169,14 @@ function renderPost(post){
   loadComments(post.id);
 }
 
-/* ================= LIKE SYSTEM ================= */
-async function updateLikeUI(postId){
-
-  const btn=document.getElementById("like-"+postId);
-  if(!btn) return;
-
-  const { count } = await supabase
-    .from("likes")
-    .select("*",{count:"exact",head:true})
-    .eq("post_id",postId)
-    .eq("active",true);
-
-  let liked=false;
-
-  if(user){
-    const { data } = await supabase
-      .from("likes")
-      .select("active")
-      .eq("post_id",postId)
-      .eq("user_id",user.id)
-      .single();
-
-    liked=data?.active===true;
-  }
-
-  btn.innerText=
-    `${liked?"Unlike":"Like"} (${count||0})`;
-}
-
-async function toggleLike(postId){
-
-  if(!user) return alert("Login first");
-
-  const { data } = await supabase
-    .from("likes")
-    .select("*")
-    .eq("post_id",postId)
-    .eq("user_id",user.id)
-    .single();
-
-  if(data){
-    await supabase
-      .from("likes")
-      .update({active:!data.active})
-      .eq("id",data.id);
-  }else{
-    await supabase
-      .from("likes")
-      .insert([{
-        post_id:postId,
-        user_id:user.id,
-        active:true
-      }]);
-  }
-}
-
 /* ================= COMMENTS ================= */
+
 window.addComment = async(postId)=>{
+
+  if(editingCommentId){
+    alert("Finish editing first");
+    return;
+  }
 
   if(!user) return alert("Login first");
 
@@ -233,10 +195,51 @@ window.addComment = async(postId)=>{
 };
 
 window.deleteComment = async(commentId)=>{
-  await supabase
-    .from("comments")
+  await supabase.from("comments")
     .delete()
     .eq("id",commentId);
+};
+
+window.editComment = function(c){
+
+  if(editingCommentId) return;
+
+  editingCommentId=c.id;
+
+  const div=document.getElementById("comment-"+c.id);
+  div.classList.add("editing");
+
+  div.innerHTML=`
+    <input id="edit-input-${c.id}"
+           value="${c.content}"
+           style="width:60%">
+    <button onclick="saveComment('${c.id}')">Save</button>
+    <button onclick="cancelEdit('${c.id}')">Cancel</button>
+  `;
+};
+
+window.saveComment = async(commentId){
+
+  const input=document
+    .getElementById("edit-input-"+commentId);
+
+  const newContent=input.value.trim();
+  if(!newContent) return;
+
+  await supabase
+    .from("comments")
+    .update({
+      content:newContent,
+      updated_at:new Date()
+    })
+    .eq("id",commentId);
+
+  editingCommentId=null;
+};
+
+window.cancelEdit = function(commentId){
+  editingCommentId=null;
+  loadPosts();
 };
 
 async function loadComments(postId){
@@ -268,17 +271,27 @@ function appendCommentToDOM(c){
   div.className="comment-item";
   div.id="comment-"+c.id;
 
+  const editedLabel=
+    c.updated_at &&
+    c.updated_at!==c.created_at
+      ? `<span class="small">(edited)</span>`
+      : "";
+
   div.innerHTML=`
     <div>
       <b>${c.username||"User"}:</b>
       ${c.content}
+      ${editedLabel}
     </div>
     ${
       user && user.id===c.user_id
-      ? `<button class="delete"
-           onclick="deleteComment('${c.id}')">
-           ❌
-         </button>`
+      ? `<div>
+           <button onclick='editComment(${JSON.stringify(c)})'>✏️</button>
+           <button class="delete"
+             onclick="deleteComment('${c.id}')">
+             ❌
+           </button>
+         </div>`
       : ""
     }
   `;
@@ -293,44 +306,29 @@ function subscribeRealtime(){
 
   channel.on(
     "postgres_changes",
-    {event:"INSERT",schema:"public",table:"posts"},
+    {event:"*",schema:"public",table:"comments"},
     payload=>{
-      renderPost(payload.new);
+
+      if(payload.eventType==="INSERT"){
+        appendCommentToDOM(payload.new);
+      }
+
+      if(payload.eventType==="DELETE"){
+        const el=document
+          .getElementById("comment-"+payload.old.id);
+        if(el) el.remove();
+      }
+
+      if(payload.eventType==="UPDATE"){
+        const el=document
+          .getElementById("comment-"+payload.new.id);
+        if(el) el.remove();
+        appendCommentToDOM(payload.new);
+      }
     }
   );
 
-  channel.on(
-    "postgres_changes",
-    {event:"*",schema:"public",table:"likes"},
-    payload=>{
-      const postId=
-        payload.new?.post_id||
-        payload.old?.post_id;
-      if(postId) updateLikeUI(postId);
-    }
-  );
-
-  channel.on(
-    "postgres_changes",
-    {event:"INSERT",schema:"public",table:"comments"},
-    payload=>{
-      appendCommentToDOM(payload.new);
-    }
-  );
-
-  channel.on(
-    "postgres_changes",
-    {event:"DELETE",schema:"public",table:"comments"},
-    payload=>{
-      const id=payload.old?.id;
-      const el=document.getElementById("comment-"+id);
-      if(el) el.remove();
-    }
-  );
-
-  channel.subscribe(status=>{
-    console.log("Realtime:",status);
-  });
+  channel.subscribe();
 }
 
 });
