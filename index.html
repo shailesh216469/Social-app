@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Production Realtime</title>
+<title>Social App – GitHub Production</title>
 
 <style>
 body{
@@ -36,7 +36,7 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App – Production Realtime</h2>
+<h2>🔥 Social App – GitHub Production</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -76,7 +76,10 @@ init();
 document.getElementById("postBtn")
 .addEventListener("click", async ()=>{
 
- if(!user) return alert("Login first");
+ if(!user){
+   alert("Login first");
+   return;
+ }
 
  const content = document.getElementById("postInput").value.trim();
  if(!content) return;
@@ -158,10 +161,10 @@ async function didUserLike(postId){
 
 window.toggleLike = async function(postId){
 
- if(!user) return alert("Login first");
-
- const btn = document.getElementById("like-"+postId);
- btn.disabled = true;
+ if(!user){
+   alert("Login first");
+   return;
+ }
 
  const { data } = await supabase
    .from("likes")
@@ -180,8 +183,6 @@ window.toggleLike = async function(postId){
      .from("likes")
      .insert([{post_id:postId,user_id:user.id}]);
  }
-
- btn.disabled = false;
 };
 
 /* ================= REALTIME ================= */
@@ -190,7 +191,7 @@ function subscribeRealtime(){
 
  const channel = supabase.channel("social-live");
 
- /* POSTS REALTIME */
+ /* NEW POSTS */
  channel.on(
    "postgres_changes",
    {event:"INSERT",schema:"public",table:"posts"},
@@ -199,13 +200,11 @@ function subscribeRealtime(){
    }
  );
 
- /* LIKES REALTIME */
+ /* LIKE EVENTS */
  channel.on(
    "postgres_changes",
    {event:"*",schema:"public",table:"likes"},
    async payload=>{
-
-     console.log("LIKE EVENT:",payload);
 
      const postId =
        payload.new?.post_id ||
@@ -240,9 +239,7 @@ function subscribeRealtime(){
    }
  );
 
- channel.subscribe(status=>{
-   console.log("Realtime:",status);
- });
+ channel.subscribe();
 }
 
 });
