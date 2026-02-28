@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Realtime Final</title>
+<title>Social App – Production Realtime</title>
 
 <style>
 body{
@@ -36,7 +36,7 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App – Realtime Final</h2>
+<h2>🔥 Social App – Production Realtime</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -56,12 +56,17 @@ const supabase = window.supabase.createClient(
  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let user=null;
+let user = null;
 
 /* ================= INIT ================= */
 async function init(){
  const { data } = await supabase.auth.getUser();
- user=data.user;
+ user = data.user;
+
+ supabase.auth.onAuthStateChange((e,session)=>{
+   user = session?.user || null;
+ });
+
  await loadPosts();
  subscribeRealtime();
 }
@@ -73,7 +78,7 @@ document.getElementById("postBtn")
 
  if(!user) return alert("Login first");
 
- const content=document.getElementById("postInput").value.trim();
+ const content = document.getElementById("postInput").value.trim();
  if(!content) return;
 
  await supabase.from("posts").insert([{
@@ -96,35 +101,37 @@ async function loadPosts(){
  feed.innerHTML="";
 
  for(const post of data){
-   await renderPost(post);
+   renderPost(post);
  }
 }
 
 /* ================= RENDER POST ================= */
 async function renderPost(post){
 
+ if(document.getElementById("post-"+post.id)) return;
+
  const likeCount = await getLikeCount(post.id);
  const liked = await didUserLike(post.id);
 
- const div=document.createElement("div");
+ const div = document.createElement("div");
  div.className="card";
  div.id="post-"+post.id;
 
  div.innerHTML=`
-   <b>${post.username||"User"}</b>
+   <b>${post.username || "User"}</b>
    <div style="margin-top:8px">${post.content}</div>
 
    <button class="like-btn"
      id="like-${post.id}"
      onclick="toggleLike('${post.id}')">
-     ${liked?"Unlike":"Like"} (${likeCount})
+     ${liked ? "Unlike" : "Like"} (${likeCount})
    </button>
  `;
 
  feed.prepend(div);
 }
 
-/* ================= LIKE FUNCTIONS ================= */
+/* ================= LIKE HELPERS ================= */
 
 async function getLikeCount(postId){
  const { count } = await supabase
@@ -132,7 +139,7 @@ async function getLikeCount(postId){
    .select("*",{count:"exact",head:true})
    .eq("post_id",postId);
 
- return count||0;
+ return count || 0;
 }
 
 async function didUserLike(postId){
@@ -147,9 +154,14 @@ async function didUserLike(postId){
  return data.length>0;
 }
 
+/* ================= TOGGLE LIKE ================= */
+
 window.toggleLike = async function(postId){
 
  if(!user) return alert("Login first");
+
+ const btn = document.getElementById("like-"+postId);
+ btn.disabled = true;
 
  const { data } = await supabase
    .from("likes")
@@ -168,15 +180,17 @@ window.toggleLike = async function(postId){
      .from("likes")
      .insert([{post_id:postId,user_id:user.id}]);
  }
+
+ btn.disabled = false;
 };
 
 /* ================= REALTIME ================= */
 
 function subscribeRealtime(){
 
- const channel = supabase.channel("likes-live");
+ const channel = supabase.channel("social-live");
 
- /* POST INSERT */
+ /* POSTS REALTIME */
  channel.on(
    "postgres_changes",
    {event:"INSERT",schema:"public",table:"posts"},
@@ -185,7 +199,7 @@ function subscribeRealtime(){
    }
  );
 
- /* LIKE EVENTS */
+ /* LIKES REALTIME */
  channel.on(
    "postgres_changes",
    {event:"*",schema:"public",table:"likes"},
@@ -199,27 +213,36 @@ function subscribeRealtime(){
 
      if(!postId) return;
 
-     await updateLikeUI(postId);
+     const btn = document.getElementById("like-"+postId);
+     if(!btn) return;
+
+     const { count } = await supabase
+       .from("likes")
+       .select("*",{count:"exact",head:true})
+       .eq("post_id",postId);
+
+     if(payload.eventType === "INSERT"){
+       if(payload.new.user_id === user?.id){
+         btn.innerText = `Unlike (${count||0})`;
+       } else {
+         btn.innerText = `Like (${count||0})`;
+       }
+     }
+
+     if(payload.eventType === "DELETE"){
+       if(payload.old.user_id === user?.id){
+         btn.innerText = `Like (${count||0})`;
+       } else {
+         btn.innerText = `Like (${count||0})`;
+       }
+     }
+
    }
  );
 
  channel.subscribe(status=>{
    console.log("Realtime:",status);
  });
-}
-
-/* ================= UPDATE LIKE UI ================= */
-
-async function updateLikeUI(postId){
-
- const btn = document.getElementById("like-"+postId);
- if(!btn) return;
-
- const count = await getLikeCount(postId);
- const liked = await didUserLike(postId);
-
- btn.innerText =
-   `${liked?"Unlike":"Like"} (${count})`;
 }
 
 });
