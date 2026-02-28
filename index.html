@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App Stable</title>
+<title>Ultimate Social App Final</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;}
@@ -11,22 +11,14 @@ button{padding:6px 10px;border:none;border-radius:8px;cursor:pointer;margin:4px 
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
 textarea{width:100%;padding:8px;border-radius:8px;margin-top:5px;}
+.image-scroll{display:flex;overflow-x:auto;gap:8px;margin-top:10px;}
+.image-scroll img{max-height:220px;border-radius:10px;}
 .comment{margin-top:6px;font-size:13px;}
-.image-scroll{
-  display:flex;
-  overflow-x:auto;
-  gap:8px;
-  margin-top:10px;
-}
-.image-scroll img{
-  max-height:220px;
-  border-radius:10px;
-}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Stable</h2>
+<h2>🔥 Social App Final</h2>
 
 <div>
 <span id="userEmail"></span>
@@ -77,11 +69,13 @@ function updateUI(){
 }
 
 googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
+
 guestBtn.onclick=async()=>{
  const {data}=await supabase.auth.signInAnonymously();
  user=data.user;
  updateUI();
 };
+
 logoutBtn.onclick=async()=>{
  await supabase.auth.signOut();
  location.reload();
@@ -108,8 +102,13 @@ postBtn.onclick=async()=>{
   paths.push("post-images/"+filename);
  }
 
- await supabase.from("posts")
+ const {error}=await supabase.from("posts")
   .insert([{content,images:paths,user_id:user.id,username:user.email}]);
+
+ if(error){
+   console.log("Insert error:",error);
+   alert("Insert failed");
+ }
 
  postInput.value="";
  imageInput.value="";
@@ -125,7 +124,7 @@ async function loadPosts(){
   .order("created_at",{ascending:false});
 
  if(error){
-  console.log(error);
+  console.log("Load error:",error);
   return;
  }
 
@@ -149,10 +148,8 @@ function renderPost(post){
     let finalUrl="";
 
     if(path.startsWith("http")){
-      // OLD posts (full URL stored)
       finalUrl=path;
     } else {
-      // NEW posts (path stored)
       const filename=path.replace("post-images/","");
       const {data}=supabase.storage
         .from("post-images")
@@ -194,15 +191,19 @@ function renderPost(post){
 
 window.deletePost=async id=>{
 
- const {data}=await supabase
+ const {data,error}=await supabase
   .from("posts")
   .select("images")
   .eq("id",id)
   .single();
 
+ if(error){
+   console.log("Select before delete error:",error);
+   return;
+ }
+
  if(data?.images){
    for(const path of data.images){
-
      if(!path.startsWith("http")){
        const filename=path.replace("post-images/","");
        await supabase.storage.from("post-images").remove([filename]);
@@ -210,7 +211,15 @@ window.deletePost=async id=>{
    }
  }
 
- await supabase.from("posts").delete().eq("id",id);
+ const {error:delError}=await supabase
+  .from("posts")
+  .delete()
+  .eq("id",id);
+
+ if(delError){
+   console.log("Delete error:",delError);
+   alert("Delete failed (RLS issue)");
+ }
 };
 
 /* ================= COMMENTS ================= */
@@ -247,7 +256,6 @@ async function loadComments(postId){
 /* ================= REALTIME ================= */
 
 function subscribeRealtime(){
-
  supabase.channel("posts")
   .on("postgres_changes",{event:"*",schema:"public",table:"posts"},
    ()=>loadPosts())
