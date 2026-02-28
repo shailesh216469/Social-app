@@ -7,14 +7,14 @@
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;transition:.3s;}
 .dark{background:#0f0f0f;color:white;}
-.card{background:white;padding:16px;border-radius:12px;margin-top:15px;box-shadow:0 3px 10px rgba(0,0,0,0.05);}
+.card{background:white;padding:16px;border-radius:12px;margin-top:15px;box-shadow:0 3px 12px rgba(0,0,0,.05);}
 .dark .card{background:#1c1c1c;}
-button{padding:6px 12px;border:none;border-radius:8px;cursor:pointer;}
+button{padding:6px 12px;border:none;border-radius:8px;cursor:pointer;margin-right:5px;margin-top:5px;}
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
 .like-btn{background:#e5e7eb;}
 .liked{background:#ef4444;color:white;}
-textarea{width:100%;padding:8px;border-radius:8px;}
+textarea{width:100%;padding:8px;border-radius:8px;margin-top:5px;}
 img{max-width:100%;border-radius:10px;margin-top:8px;}
 .small{font-size:12px;opacity:.6;}
 .comment-box{margin-top:10px;padding-left:10px;border-left:2px solid #ddd;}
@@ -68,6 +68,7 @@ async function init(){
  updateUserUI();
  loadPosts();
  subscribeRealtime();
+ setInterval(refreshTimes,30000);
 }
 
 function updateUserUI(){
@@ -91,31 +92,69 @@ async()=>{
  location.reload();
 };
 
+/* ===== IMAGE COMPRESSION ===== */
+async function compressImage(file){
+ return new Promise(res=>{
+  const r=new FileReader();
+  r.readAsDataURL(file);
+  r.onload=e=>{
+   const img=new Image();
+   img.src=e.target.result;
+   img.onload=()=>{
+    const canvas=document.createElement("canvas");
+    const MAX=1080;
+    let w=img.width,h=img.height;
+    if(w>MAX){h=h*(MAX/w);w=MAX;}
+    canvas.width=w;canvas.height=h;
+    canvas.getContext("2d").drawImage(img,0,0,w,h);
+    canvas.toBlob(b=>res(b),"image/jpeg",0.7);
+   }
+  }
+ })
+}
+
 /* ===== CREATE POST ===== */
 document.getElementById("postBtn").onclick=async()=>{
  if(!user)return alert("Login first");
-
  const content=document.getElementById("postInput").value;
+ const files=document.getElementById("imageInput").files;
+ let urls=[];
+
+ for(const f of files){
+  const blob=await compressImage(f);
+  const name=Date.now()+"-"+Math.random()+".jpg";
+  await supabase.storage.from("post-images").upload(name,blob);
+  const {data}=supabase.storage.from("post-images").getPublicUrl(name);
+  urls.push(data.publicUrl);
+ }
 
  await supabase.from("posts").insert([{
-  content,user_id:user.id,username:user.email
+  content,images:urls,user_id:user.id,username:user.email
  }]);
 
  document.getElementById("postInput").value="";
+ document.getElementById("imageInput").value="";
 };
 
 /* ===== RENDER POST ===== */
 async function renderPost(post){
-
  if(document.getElementById("post-"+post.id))return;
 
  const div=document.createElement("div");
  div.className="card";
  div.id="post-"+post.id;
 
+ let imgs="";
+ if(post.images){
+  post.images.forEach(u=>imgs+=`<img src="${u}">`);
+ }
+
  div.innerHTML=`
   <b>${post.username||"User"}</b>
-  <div class="small">${timeAgo(post.created_at)}</div>
+  <div class="small time" data-time="${post.created_at}">
+    ${timeAgo(post.created_at)}
+  </div>
+
   <div id="post-content-${post.id}">${post.content||""}</div>
 
   ${
@@ -124,13 +163,13 @@ async function renderPost(post){
     <button class="danger" onclick="deletePost('${post.id}')">Delete</button>`:""
   }
 
-  <br><br>
+  ${imgs}
 
+  <br>
   <button id="like-${post.id}" class="like-btn">Like</button>
   <span id="like-count-${post.id}">0</span>
 
   <div id="comments-${post.id}"></div>
-
   <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
   <button onclick="addComment('${post.id}')">Send</button>
  `;
@@ -141,47 +180,41 @@ async function renderPost(post){
  loadComments(post.id);
 }
 
-/* ===== POST DELETE ===== */
-window.deletePost=async function(id){
- await supabase.from("posts").delete().eq("id",id);
-};
-
 /* ===== POST EDIT ===== */
 window.editPost=function(id){
  const el=document.getElementById("post-content-"+id);
  const old=el.innerText;
  el.innerHTML=`
-   <textarea id="edit-post-${id}">${old}</textarea>
-   <button onclick="savePost('${id}')">Save</button>
+  <textarea id="edit-post-${id}">${old}</textarea>
+  <button onclick="savePost('${id}')">Save</button>
  `;
-};
+}
 
 window.savePost=async function(id){
  const val=document.getElementById("edit-post-"+id).value;
  await supabase.from("posts").update({content:val}).eq("id",id);
-};
+}
+
+window.deletePost=async function(id){
+ await supabase.from("posts").delete().eq("id",id);
+}
 
 /* ===== LIKE ===== */
 async function initLike(postId){
-
  const btn=document.getElementById("like-"+postId);
-
  const {count}=await supabase.from("likes")
   .select("*",{count:"exact",head:true})
   .eq("post_id",postId)
   .eq("active",true);
-
  document.getElementById("like-count-"+postId).innerText=count||0;
 
  btn.onclick=async()=>{
   if(!user)return alert("Login");
-
   const {data}=await supabase.from("likes")
    .select("*")
    .eq("post_id",postId)
    .eq("user_id",user.id)
    .maybeSingle();
-
   if(data){
    await supabase.from("likes")
     .update({active:!data.active})
@@ -190,7 +223,7 @@ async function initLike(postId){
    await supabase.from("likes")
     .insert([{post_id:postId,user_id:user.id,active:true}]);
   }
- };
+ }
 }
 
 /* ===== COMMENTS ===== */
@@ -199,13 +232,29 @@ window.addComment=async function(postId){
  const input=document.getElementById("comment-input-"+postId);
  if(!input.value)return;
  await supabase.from("comments").insert([{
-  post_id:postId,
-  user_id:user.id,
-  username:user.email,
-  content:input.value
+  post_id:postId,user_id:user.id,
+  username:user.email,content:input.value
  }]);
  input.value="";
-};
+}
+
+window.deleteComment=async function(id){
+ await supabase.from("comments").delete().eq("id",id);
+}
+
+window.editComment=function(id){
+ const el=document.getElementById("comment-content-"+id);
+ const old=el.innerText;
+ el.innerHTML=`
+  <textarea id="edit-comment-${id}">${old}</textarea>
+  <button onclick="saveComment('${id}')">Save</button>
+ `;
+}
+
+window.saveComment=async function(id){
+ const val=document.getElementById("edit-comment-"+id).value;
+ await supabase.from("comments").update({content:val}).eq("id",id);
+}
 
 async function loadComments(postId){
  const {data}=await supabase.from("comments")
@@ -218,11 +267,12 @@ async function loadComments(postId){
 
  data.forEach(c=>{
   box.innerHTML+=`
-   <div class="comment-box" id="comment-${c.id}">
+   <div class="comment-box">
     <b>${c.username}</b>
-    <span class="small">${timeAgo(c.created_at)}</span>
+    <span class="small time" data-time="${c.created_at}">
+      ${timeAgo(c.created_at)}
+    </span>
     <div id="comment-content-${c.id}">${c.content}</div>
-
     ${
      user && user.id===c.user_id ?
      `<button onclick="editComment('${c.id}')">Edit</button>
@@ -233,71 +283,47 @@ async function loadComments(postId){
  });
 }
 
-/* ===== COMMENT DELETE ===== */
-window.deleteComment=async function(id){
- await supabase.from("comments").delete().eq("id",id);
-};
-
-/* ===== COMMENT EDIT ===== */
-window.editComment=function(id){
- const el=document.getElementById("comment-content-"+id);
- const old=el.innerText;
- el.innerHTML=`
-  <textarea id="edit-comment-${id}">${old}</textarea>
-  <button onclick="saveComment('${id}')">Save</button>
- `;
-};
-
-window.saveComment=async function(id){
- const val=document.getElementById("edit-comment-"+id).value;
- await supabase.from("comments").update({content:val}).eq("id",id);
-};
-
 /* ===== REALTIME ===== */
 function subscribeRealtime(){
-
- supabase.channel("posts")
-  .on("postgres_changes",
-   {event:"INSERT",schema:"public",table:"posts"},
-   p=>renderPost(p.new)
-  )
-  .on("postgres_changes",
-   {event:"DELETE",schema:"public",table:"posts"},
-   p=>document.getElementById("post-"+p.old.id)?.remove()
-  )
-  .on("postgres_changes",
-   {event:"UPDATE",schema:"public",table:"posts"},
-   p=>{
-    const el=document.getElementById("post-content-"+p.new.id);
-    if(el)el.innerText=p.new.content;
-   }
-  )
+ supabase.channel("all")
+  .on("postgres_changes",{event:"INSERT",schema:"public",table:"posts"},
+    p=>renderPost(p.new))
+  .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},
+    p=>document.getElementById("post-"+p.old.id)?.remove())
+  .on("postgres_changes",{event:"UPDATE",schema:"public",table:"posts"},
+    p=>{
+     const el=document.getElementById("post-content-"+p.new.id);
+     if(el)el.innerText=p.new.content;
+    })
   .subscribe();
 
  supabase.channel("likes")
-  .on("postgres_changes",
-   {event:"*",schema:"public",table:"likes"},
-   async p=>{
-    const id=p.new?.post_id||p.old?.post_id;
-    const {count}=await supabase.from("likes")
-     .select("*",{count:"exact",head:true})
-     .eq("post_id",id)
-     .eq("active",true);
-    const el=document.getElementById("like-count-"+id);
-    if(el)el.innerText=count||0;
-   }
-  )
+  .on("postgres_changes",{event:"*",schema:"public",table:"likes"},
+    async p=>{
+     const id=p.new?.post_id||p.old?.post_id;
+     const {count}=await supabase.from("likes")
+      .select("*",{count:"exact",head:true})
+      .eq("post_id",id)
+      .eq("active",true);
+     const el=document.getElementById("like-count-"+id);
+     if(el)el.innerText=count||0;
+    })
   .subscribe();
 
  supabase.channel("comments")
-  .on("postgres_changes",
-   {event:"*",schema:"public",table:"comments"},
-   p=>{
-    const id=p.new?.post_id||p.old?.post_id;
-    if(id)loadComments(id);
-   }
-  )
+  .on("postgres_changes",{event:"*",schema:"public",table:"comments"},
+    p=>{
+     const id=p.new?.post_id||p.old?.post_id;
+     if(id)loadComments(id);
+    })
   .subscribe();
+}
+
+/* ===== TIME AUTO UPDATE ===== */
+function refreshTimes(){
+ document.querySelectorAll(".time").forEach(el=>{
+  el.innerText=timeAgo(el.dataset.time);
+ });
 }
 
 /* ===== DARK ===== */
@@ -312,7 +338,6 @@ async function loadPosts(){
 }
 
 init();
-
 });
 </script>
 </body>
