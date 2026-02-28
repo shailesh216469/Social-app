@@ -168,8 +168,10 @@ async function renderPost(post){
   imagesHTML+=`</div>`;
  }
 
- const likeCount = await getLikeCount(post.id);
- const liked = await checkUserLiked(post.id);
+ const {count}=await supabase
+  .from("likes")
+  .select("*",{count:"exact",head:true})
+  .eq("post_id",post.id);
 
  const div=document.createElement("div");
  div.className="card";
@@ -182,7 +184,7 @@ async function renderPost(post){
  ${imagesHTML}
  <div>
   <button class="like" onclick="toggleLike('${post.id}')">
-   ${liked?"Unlike":"Like"} (${likeCount})
+   Like (${count||0})
   </button>
   ${user && user.id===post.user_id ?
    `<button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
@@ -231,43 +233,9 @@ window.toggleLike=async(postId)=>{
      .from("likes")
      .insert([{ post_id: postId, user_id: user.id }]);
  }
-
- // ❌ No UI update here
 };
 
-async function getLikeCount(postId){
- const {count}=await supabase
-  .from("likes")
-  .select("*",{count:"exact",head:true})
-  .eq("post_id",postId);
- return count||0;
-}
-
-async function checkUserLiked(postId){
- if(!user)return false;
- const {data}=await supabase
-  .from("likes")
-  .select("id")
-  .eq("post_id",postId)
-  .eq("user_id",user.id)
-  .maybeSingle();
- return !!data;
-}
-
-async function updateLikeUI(postId){
- const postEl=document.getElementById("post-"+postId);
- if(!postEl)return;
-
- const btn=postEl.querySelector(".like");
- if(!btn)return;
-
- const count=await getLikeCount(postId);
- const liked=await checkUserLiked(postId);
-
- btn.innerText=`${liked?"Unlike":"Like"} (${count})`;
-}
-
-/* ================= REALTIME ================= */
+/* ================= REALTIME (FACEBOOK STYLE) ================= */
 function subscribeRealtime(){
 
  // POSTS
@@ -284,20 +252,33 @@ function subscribeRealtime(){
       })
   .subscribe();
 
- // FACEBOOK STYLE LIKE REALTIME
+ // LIKE INSERT + DELETE
  supabase
-  .channel('likes-facebook-style')
+  .channel('likes-facebook')
   .on('postgres_changes',
-      { event:'*', schema:'public', table:'likes' },
-      async payload=>{
-        const postId =
-          payload.new?.post_id ||
-          payload.old?.post_id;
-
-        if(!postId) return;
-        await updateLikeUI(postId);
+      { event:'INSERT', schema:'public', table:'likes' },
+      payload=>{
+        updateLikeCount(payload.new.post_id, +1);
+      })
+  .on('postgres_changes',
+      { event:'DELETE', schema:'public', table:'likes' },
+      payload=>{
+        updateLikeCount(payload.old.post_id, -1);
       })
   .subscribe();
+}
+
+function updateLikeCount(postId, change){
+ const postEl=document.getElementById("post-"+postId);
+ if(!postEl) return;
+
+ const btn=postEl.querySelector(".like");
+ if(!btn) return;
+
+ const current=parseInt(btn.innerText.match(/\d+/)?.[0] || 0);
+ const newCount=current+change;
+
+ btn.innerText=`Like (${newCount})`;
 }
 
 init();
