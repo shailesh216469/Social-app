@@ -170,23 +170,20 @@ async function renderPost(post){
 }
 
 /* ================= DELETE POST ================= */
-window.deletePost=async(id)=>{
+window.deletePost = async (id) => {
 
- const {data}=await supabase
-  .from("posts")
-  .select("images")
-  .eq("id",id)
-  .single();
+  const { error } = await supabase
+    .from("posts")
+    .delete()
+    .eq("id", id);
 
- if(data?.images?.length){
-  await supabase.storage
-   .from("post-images")
-   .remove(data.images);
- }
+  console.log("DELETE ERROR:", error);
 
- await supabase.from("posts").delete().eq("id",id);
-
- document.getElementById("post-"+id)?.remove();
+  if (!error) {
+    document.getElementById("post-"+id)?.remove();
+  } else {
+    alert("Delete blocked by RLS");
+  }
 };
 
 /* ================= LIKE SYSTEM ================= */
