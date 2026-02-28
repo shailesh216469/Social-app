@@ -232,27 +232,19 @@ async function countLikes(postId){
  return count||0;
 }
 
+/* NO optimistic UI */
 window.toggleLike=async(postId)=>{
  if(!user)return;
 
  const btn=document.querySelector(`#post-${postId} .like`);
- let count=parseInt(btn.dataset.count);
  const liked=btn.dataset.liked==="true";
 
  if(liked){
-   btn.dataset.liked="false";
-   btn.dataset.count=count-1;
-   btn.innerText=`Like (${count-1})`;
-
    await supabase.from("likes")
     .delete()
     .eq("post_id",postId)
     .eq("user_id",user.id);
  }else{
-   btn.dataset.liked="true";
-   btn.dataset.count=count+1;
-   btn.innerText=`Unlike (${count+1})`;
-
    await supabase.from("likes")
     .insert([{post_id:postId,user_id:user.id}]);
  }
@@ -275,12 +267,13 @@ function subscribeRealtime(){
       })
   .subscribe();
 
- // LIKES
+ // LIKES (DB is source of truth)
  supabase
   .channel('likes-live')
   .on('postgres_changes',
       { event:'*', schema:'public', table:'likes' },
       async payload=>{
+
         const postId=payload.new?.post_id||payload.old?.post_id;
         if(!postId)return;
 
@@ -295,9 +288,20 @@ function subscribeRealtime(){
           .select("*",{count:"exact",head:true})
           .eq("post_id",postId);
 
-        const liked=btn.dataset.liked==="true";
+        let isLiked=false;
+        if(user){
+          const {data}=await supabase
+            .from("likes")
+            .select("id")
+            .eq("post_id",postId)
+            .eq("user_id",user.id);
+
+          isLiked=data?.length>0;
+        }
+
         btn.dataset.count=count||0;
-        btn.innerText=`${liked?"Unlike":"Like"} (${count||0})`;
+        btn.dataset.liked=isLiked;
+        btn.innerText=`${isLiked?"Unlike":"Like"} (${count||0})`;
       })
   .subscribe();
 }
