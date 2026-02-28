@@ -2,29 +2,32 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App v3.4</title>
+<title>Ultimate Social App v3.5</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;transition:.3s;}
 .dark{background:#0f0f0f;color:white;}
-.card{background:white;padding:16px;border-radius:16px;margin-top:20px;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+.card{background:white;padding:16px;border-radius:14px;margin-top:18px;box-shadow:0 3px 15px rgba(0,0,0,.06);}
 .dark .card{background:#1c1c1c;}
-button{padding:6px 12px;border:none;border-radius:10px;cursor:pointer;margin-right:5px;margin-top:5px;}
+button{padding:6px 10px;border:none;border-radius:8px;cursor:pointer;margin-right:5px;margin-top:5px;font-size:13px;}
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
-textarea{width:100%;padding:10px;border-radius:12px;margin-top:5px;}
-.small{font-size:12px;opacity:.6;}
-.comment-box{margin-top:10px;padding-left:10px;border-left:2px solid #ddd;}
-.image-grid{display:grid;gap:6px;margin-top:10px;}
-.image-grid.single{grid-template-columns:1fr;}
-.image-grid.two{grid-template-columns:1fr 1fr;}
-.image-grid.multi{grid-template-columns:repeat(3,1fr);}
-.image-grid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:12px;}
+textarea{width:100%;padding:8px;border-radius:10px;margin-top:5px;font-size:14px;}
+.comment-box{margin-top:8px;padding-left:8px;border-left:2px solid #ddd;font-size:13px;}
+.image-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px;}
+.image-grid img{width:100%;height:110px;object-fit:cover;border-radius:8px;}
+.overlay{
+ position:absolute;top:0;left:0;width:100%;height:100%;
+ background:rgba(0,0,0,.5);
+ color:white;display:flex;align-items:center;
+ justify-content:center;font-size:20px;border-radius:8px;
+}
+.small{font-size:12px;color:#777;}
 </style>
 </head>
 <body>
 
-<h2>🔥 Ultimate Social App v3.4</h2>
+<h2>🔥 Ultimate Social App v3.5</h2>
 
 <div>
 <span id="userEmail"></span>
@@ -54,23 +57,6 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* ================= TIME ================= */
-
-function timeAgo(d){
- if(!d) return "";
- const s=Math.floor((Date.now()-new Date(d))/1000);
- if(s<60)return"Just now";
- if(s<3600)return Math.floor(s/60)+"m ago";
- if(s<86400)return Math.floor(s/3600)+"h ago";
- return Math.floor(s/86400)+"d ago";
-}
-
-setInterval(()=>{
- document.querySelectorAll(".time").forEach(el=>{
-  el.innerText=timeAgo(el.dataset.time);
- });
-},30000);
-
 /* ================= AUTH ================= */
 
 async function init(){
@@ -78,9 +64,9 @@ async function init(){
  user=data.user;
  updateUserUI();
 
- supabase.auth.onAuthStateChange((event, session)=>{
-   user=session?.user||null;
-   updateUserUI();
+ supabase.auth.onAuthStateChange((e,s)=>{
+  user=s?.user||null;
+  updateUserUI();
  });
 
  await loadPosts();
@@ -88,18 +74,16 @@ async function init(){
 }
 
 function updateUserUI(){
- document.getElementById("userEmail").innerText =
+ userEmail.innerText =
  user ? "Logged in: "+(user.email||"Guest") : "Not logged in";
 }
 
 googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
-
 guestBtn.onclick=async()=>{
  const {data}=await supabase.auth.signInAnonymously();
  user=data.user;
  updateUserUI();
 };
-
 logoutBtn.onclick=async()=>{
  await supabase.auth.signOut();
  location.reload();
@@ -114,11 +98,12 @@ postBtn.onclick=async()=>{
  const files=imageInput.files;
 
  if(!content && files.length===0){
-   alert("Post cannot be empty");
-   return;
+  alert("Post cannot be empty");
+  return;
  }
 
  let urls=[];
+
  for(const f of files){
   const name=Date.now()+"-"+Math.random()+".jpg";
   await supabase.storage.from("post-images").upload(name,f);
@@ -137,28 +122,38 @@ postBtn.onclick=async()=>{
 
 async function loadPosts(){
  feed.innerHTML="";
- const {data}=await supabase
-  .from("posts")
+ const {data}=await supabase.from("posts")
   .select("*")
   .order("created_at",{ascending:false});
-
- if(!data) return;
- data.forEach(renderPost);
+ data?.forEach(renderPost);
 }
 
 /* ================= RENDER POST ================= */
 
 function renderPost(post){
 
- if(document.getElementById("post-"+post.id)) return;
+ if(document.getElementById("post-"+post.id))return;
 
  let grid="";
  if(post.images && post.images.length){
-  let type="single";
-  if(post.images.length===2)type="two";
-  if(post.images.length>=3)type="multi";
-  grid=`<div class="image-grid ${type}">`;
-  post.images.forEach(u=>grid+=`<img src="${u}">`);
+  const visible=post.images.slice(0,3);
+  const extra=post.images.length-3;
+
+  grid=`<div class="image-grid">`;
+
+  visible.forEach((u,i)=>{
+   if(i===2 && extra>0){
+    grid+=`
+     <div style="position:relative">
+      <img src="${u}">
+      <div class="overlay">+${extra}</div>
+     </div>
+    `;
+   }else{
+    grid+=`<img src="${u}">`;
+   }
+  });
+
   grid+=`</div>`;
  }
 
@@ -167,11 +162,7 @@ function renderPost(post){
  div.id="post-"+post.id;
 
  div.innerHTML=`
-  <b>${post.username||"User"}</b>
-  <div class="small time" data-time="${post.created_at}">
-   ${timeAgo(post.created_at)}
-  </div>
-
+  <b>${post.username}</b>
   <div id="post-text-${post.id}">${post.content||""}</div>
 
   ${
@@ -183,38 +174,75 @@ function renderPost(post){
 
   ${grid}
 
-  <br>
-  <button id="like-${post.id}">Like</button>
-  <span id="like-count-${post.id}">0</span>
-
   <div id="comments-${post.id}"></div>
   <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
   <button onclick="addComment('${post.id}')">Send</button>
  `;
 
  feed.appendChild(div);
- initLike(post.id);
  loadComments(post.id);
 }
 
-/* ================= EDIT ================= */
+/* ================= DELETE POST ================= */
 
-window.editPost=id=>{
- const el=document.getElementById("post-text-"+id);
- const old=el.innerText;
- el.innerHTML=`<textarea id="edit-${id}">${old}</textarea>
- <button onclick="savePost('${id}')">Save</button>`;
+window.deletePost=async id=>{
+ const {data}=await supabase.from("posts")
+  .select("images")
+  .eq("id",id)
+  .single();
+
+ if(data?.images){
+  for(const url of data.images){
+   const path=url.split("/post-images/")[1];
+   if(path){
+    await supabase.storage.from("post-images").remove([path]);
+   }
+  }
+ }
+
+ await supabase.from("posts").delete().eq("id",id);
+};
+
+/* ================= EDIT POST ================= */
+
+window.editPost=async id=>{
+ const {data}=await supabase.from("posts")
+  .select("*")
+  .eq("id",id)
+  .single();
+
+ const post=document.getElementById("post-"+id);
+
+ let currentImages="";
+ data.images?.forEach(u=>{
+  currentImages+=`<img src="${u}" style="width:70px;height:70px;object-fit:cover;margin:4px;border-radius:6px;">`;
+ });
+
+ post.innerHTML=`
+  <textarea id="edit-text-${id}">${data.content}</textarea>
+  <div>${currentImages}</div>
+  <input type="file" id="edit-img-${id}" multiple>
+  <button onclick="savePost('${id}')">Save</button>
+  <button onclick="loadPosts()">Cancel</button>
+ `;
 };
 
 window.savePost=async id=>{
- const val=document.getElementById("edit-"+id).value;
- await supabase.from("posts").update({content:val}).eq("id",id);
-};
+ const text=document.getElementById("edit-text-"+id).value;
+ const files=document.getElementById("edit-img-"+id).files;
 
-/* ================= DELETE ================= */
+ let urls=[];
 
-window.deletePost=async id=>{
- await supabase.from("posts").delete().eq("id",id);
+ for(const f of files){
+  const name=Date.now()+"-"+Math.random()+".jpg";
+  await supabase.storage.from("post-images").upload(name,f);
+  const {data}=supabase.storage.from("post-images").getPublicUrl(name);
+  urls.push(data.publicUrl);
+ }
+
+ await supabase.from("posts")
+  .update({content:text,images:urls})
+  .eq("id",id);
 };
 
 /* ================= COMMENTS ================= */
@@ -239,11 +267,10 @@ async function loadComments(postId){
  const box=document.getElementById("comments-"+postId);
  box.innerHTML="";
 
- data.forEach(c=>{
+ data?.forEach(c=>{
   box.innerHTML+=`
-   <div id="comment-${c.id}" class="comment-box">
-    <b>${c.username}</b>
-    <div>${c.content}</div>
+   <div class="comment-box" id="comment-${c.id}">
+    <b>${c.username}</b>: ${c.content}
     ${
      user && String(user.id)===String(c.user_id)
      ? `<button onclick="deleteComment('${c.id}')">Delete</button>`
@@ -258,49 +285,13 @@ window.deleteComment=async id=>{
  await supabase.from("comments").delete().eq("id",id);
 };
 
-/* ================= LIKE ================= */
-
-async function initLike(postId){
-
- const {count}=await supabase.from("likes")
-  .select("*",{count:"exact",head:true})
-  .eq("post_id",postId)
-  .eq("active",true);
-
- document.getElementById("like-count-"+postId).innerText=count||0;
-
- document.getElementById("like-"+postId).onclick=async()=>{
-  const {data}=await supabase.from("likes")
-   .select("*")
-   .eq("post_id",postId)
-   .eq("user_id",user.id)
-   .maybeSingle();
-
-  if(data){
-   await supabase.from("likes")
-    .update({active:!data.active})
-    .eq("id",data.id);
-  }else{
-   await supabase.from("likes")
-    .insert([{post_id:postId,user_id:user.id,active:true}]);
-  }
- };
-}
-
 /* ================= REALTIME ================= */
 
 function subscribeRealtime(){
 
  supabase.channel("posts")
-  .on("postgres_changes",{event:"INSERT",schema:"public",table:"posts"},
-   p=>renderPost(p.new))
-  .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},
-   p=>document.getElementById("post-"+p.old.id)?.remove())
-  .on("postgres_changes",{event:"UPDATE",schema:"public",table:"posts"},
-   p=>{
-    const el=document.getElementById("post-text-"+p.new.id);
-    if(el)el.innerText=p.new.content;
-   })
+  .on("postgres_changes",{event:"*",schema:"public",table:"posts"},
+   ()=>loadPosts())
   .subscribe();
 
  supabase.channel("comments")
@@ -308,19 +299,6 @@ function subscribeRealtime(){
    p=>{
     const id=p.new?.post_id||p.old?.post_id;
     if(id)loadComments(id);
-   })
-  .subscribe();
-
- supabase.channel("likes")
-  .on("postgres_changes",{event:"*",schema:"public",table:"likes"},
-   async p=>{
-    const id=p.new?.post_id||p.old?.post_id;
-    const {count}=await supabase.from("likes")
-     .select("*",{count:"exact",head:true})
-     .eq("post_id",id)
-     .eq("active",true);
-    const el=document.getElementById("like-count-"+id);
-    if(el)el.innerText=count||0;
    })
   .subscribe();
 }
