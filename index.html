@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App vFinal Stable FIXED</title>
+<title>Ultimate Social App vFinal Stable</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;}
@@ -123,7 +123,7 @@ async function loadPosts(){
  data?.forEach(renderPost);
 }
 
-/* ================= RENDER ================= */
+/* ================= RENDER POST ================= */
 async function renderPost(post){
 
  if(document.getElementById("post-"+post.id))return;
@@ -175,32 +175,40 @@ window.deletePost=async(postId)=>{
 
  if(!user) return alert("Login required");
 
- const {data:post}=await supabase
-  .from("posts")
-  .select("images,user_id")
-  .eq("id",postId)
-  .single();
+ const { data: post } = await supabase
+   .from("posts")
+   .select("*")
+   .eq("id", postId)
+   .single();
 
- if(!post || post.user_id!==user.id){
-  return alert("Not allowed");
+ if (!post || post.user_id !== user.id) {
+   return alert("Not allowed");
  }
 
- // delete storage images
- if(post.images?.length){
-  await supabase.storage.from("post-images").remove(post.images);
+ // delete DB row FIRST
+ const { error } = await supabase
+   .from("posts")
+   .delete()
+   .eq("id", postId)
+   .eq("user_id", user.id);
+
+ if (error) {
+   console.error(error);
+   return alert("Delete failed");
  }
 
- const {error}=await supabase
-  .from("posts")
-  .delete()
-  .eq("id",postId)
-  .eq("user_id",user.id);
+ // remove from UI immediately
+ document.getElementById("post-" + postId)?.remove();
 
- if(error){
-  console.error(error);
-  alert("Delete failed");
- }else{
-  document.getElementById("post-"+postId)?.remove();
+ // try to delete storage safely (ignore error)
+ if (post.images?.length) {
+   try {
+     await supabase.storage
+       .from("post-images")
+       .remove(post.images);
+   } catch (e) {
+     console.log("Storage cleanup skipped:", e);
+   }
  }
 };
 
@@ -236,8 +244,6 @@ window.toggleLike=async(postId)=>{
    .insert([{post_id:postId,user_id:user.id}]);
  }
 
- const postDiv=document.getElementById("post-"+postId);
- postDiv?.remove();
  loadPosts();
 };
 
