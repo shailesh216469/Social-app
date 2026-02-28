@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Realtime Stable</title>
+<title>Social App Stable</title>
 
 <style>
 body{
@@ -28,11 +28,12 @@ button{
 .primary{background:#4f46e5;color:white;}
 .like{background:#10b981;color:white;}
 .comment-box{margin-top:10px;}
+textarea{width:100%;margin-bottom:8px;}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Realtime Stable</h2>
+<h2>🔥 Social App Stable</h2>
 
 <div>
 <button id="googleBtn" class="primary">Google</button>
@@ -73,17 +74,41 @@ async function init(){
 }
 init();
 
+/* ================= POST BUTTON ================= */
+document.getElementById("postBtn")
+.addEventListener("click", async ()=>{
+
+  if(!user){
+    alert("Login first");
+    return;
+  }
+
+  const content=document.getElementById("postInput").value.trim();
+  if(!content){
+    alert("Post cannot be empty");
+    return;
+  }
+
+  await supabase.from("posts").insert([{
+    content:content,
+    user_id:user.id,
+    username:user.email
+  }]);
+
+  document.getElementById("postInput").value="";
+});
+
 /* ================= LOAD POSTS ================= */
 async function loadPosts(){
+
   const { data } = await supabase
     .from("posts")
     .select("*")
     .order("created_at",{ascending:false});
 
   feed.innerHTML="";
-  for(const post of data){
-    renderPost(post);
-  }
+
+  data?.forEach(post=>renderPost(post));
 }
 
 /* ================= RENDER POST ================= */
@@ -96,7 +121,9 @@ function renderPost(post){
   div.innerHTML=`
     <b>${post.username||"User"}</b>
     <div>${post.content||""}</div>
-    <button class="like" id="like-${post.id}">Like (0)</button>
+    <button class="like" id="like-${post.id}">
+      Like (0)
+    </button>
 
     <div class="comment-box">
       <input id="comment-input-${post.id}" placeholder="Comment...">
@@ -115,7 +142,7 @@ function renderPost(post){
   loadComments(post.id);
 }
 
-/* ================= LIKE UI ================= */
+/* ================= UPDATE LIKE UI ================= */
 async function updateLikeUI(postId){
 
   const btn=document.getElementById("like-"+postId);
@@ -168,12 +195,17 @@ async function toggleLike(postId){
       .insert([{post_id:postId,user_id:user.id}]);
   }
 
-  updateLikeUI(postId);
+  // DO NOT manually update UI
+  // Realtime will sync
 }
 
 /* ================= COMMENTS ================= */
 window.addComment=async(postId)=>{
-  if(!user) return alert("Login first");
+
+  if(!user){
+    alert("Login first");
+    return;
+  }
 
   const input=document.getElementById("comment-input-"+postId);
   const content=input.value.trim();
@@ -198,9 +230,7 @@ async function loadComments(postId){
 
   box.innerHTML="";
   data?.forEach(c=>{
-    box.innerHTML+=`
-      <div>${c.content}</div>
-    `;
+    box.innerHTML+=`<div>${c.content}</div>`;
   });
 }
 
