@@ -279,27 +279,66 @@ window.toggleLike=async(postId)=>{
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
 
- supabase
-  .channel('posts-live')
-  .on(
-    'postgres_changes',
-    { event: 'INSERT', schema: 'public', table: 'posts' },
-    payload => renderPost(payload.new)
-  )
-  .on(
-    'postgres_changes',
-    { event: 'DELETE', schema: 'public', table: 'posts' },
-    payload => {
-      const el=document.getElementById("post-"+payload.old.id);
-      if(el)el.remove();
-    }
-  )
-  .subscribe();
+  // POSTS INSERT + DELETE
+  supabase
+    .channel('posts-live')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'posts' },
+      payload => renderPost(payload.new)
+    )
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'posts' },
+      payload => {
+        const el=document.getElementById("post-"+payload.old.id);
+        if(el) el.remove();
+      }
+    )
+    .subscribe();
+
+  // LIKES INSERT + DELETE
+  supabase
+    .channel('likes-live')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'likes' },
+      async payload => {
+
+        const postId = payload.new?.post_id || payload.old?.post_id;
+        if(!postId) return;
+
+        const postEl = document.getElementById("post-"+postId);
+        if(!postEl) return;
+
+        const btn = postEl.querySelector(".like");
+        if(!btn) return;
+
+        // Recalculate like count
+        const { count } = await supabase
+          .from("likes")
+          .select("*",{count:"exact",head:true})
+          .eq("post_id",postId);
+
+        btn.dataset.count = count || 0;
+
+        // Update button text
+        const liked = await supabase
+          .from("likes")
+          .select("id")
+          .eq("post_id",postId)
+          .eq("user_id",user?.id);
+
+        const isLiked = liked.data?.length > 0;
+
+        btn.dataset.liked = isLiked;
+        btn.innerText = `${isLiked?"Unlike":"Like"} (${count||0})`;
+
+      }
+    )
+    .subscribe();
 
 }
-
-init();
-});
 </script>
 </body>
 </html>
