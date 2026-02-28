@@ -199,7 +199,7 @@ async function renderPost(post){
  feed.appendChild(div);
 }
 
-/* ================= DELETE ================= */
+/* ================= DELETE POST ================= */
 window.deletePost=async(postId)=>{
  if(!user)return;
 
@@ -219,10 +219,10 @@ window.deletePost=async(postId)=>{
 async function isLiked(postId){
  if(!user)return false;
  const {data}=await supabase.from("likes")
-  .select("*")
+  .select("id")
   .eq("post_id",postId)
   .eq("user_id",user.id);
- return data.length>0;
+ return data?.length>0;
 }
 
 async function countLikes(postId){
@@ -232,7 +232,6 @@ async function countLikes(postId){
  return count||0;
 }
 
-/* NO optimistic UI */
 window.toggleLike=async(postId)=>{
  if(!user)return;
 
@@ -267,43 +266,53 @@ function subscribeRealtime(){
       })
   .subscribe();
 
- // LIKES (DB is source of truth)
+ // LIKE INSERT
  supabase
-  .channel('likes-live')
+  .channel('likes-insert')
   .on('postgres_changes',
-      { event:'*', schema:'public', table:'likes' },
+      { event:'INSERT', schema:'public', table:'likes' },
       async payload=>{
-
-        const postId=payload.new?.post_id||payload.old?.post_id;
-        if(!postId)return;
-
-        const postEl=document.getElementById("post-"+postId);
-        if(!postEl)return;
-
-        const btn=postEl.querySelector(".like");
-        if(!btn)return;
-
-        const {count}=await supabase
-          .from("likes")
-          .select("*",{count:"exact",head:true})
-          .eq("post_id",postId);
-
-        let isLiked=false;
-        if(user){
-          const {data}=await supabase
-            .from("likes")
-            .select("id")
-            .eq("post_id",postId)
-            .eq("user_id",user.id);
-
-          isLiked=data?.length>0;
-        }
-
-        btn.dataset.count=count||0;
-        btn.dataset.liked=isLiked;
-        btn.innerText=`${isLiked?"Unlike":"Like"} (${count||0})`;
+        await refreshLike(payload.new.post_id);
       })
   .subscribe();
+
+ // LIKE DELETE
+ supabase
+  .channel('likes-delete')
+  .on('postgres_changes',
+      { event:'DELETE', schema:'public', table:'likes' },
+      async payload=>{
+        await refreshLike(payload.old.post_id);
+      })
+  .subscribe();
+}
+
+async function refreshLike(postId){
+ const postEl=document.getElementById("post-"+postId);
+ if(!postEl)return;
+
+ const btn=postEl.querySelector(".like");
+ if(!btn)return;
+
+ const {count}=await supabase
+  .from("likes")
+  .select("*",{count:"exact",head:true})
+  .eq("post_id",postId);
+
+ let isLiked=false;
+ if(user){
+  const {data}=await supabase
+   .from("likes")
+   .select("id")
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+
+  isLiked=data?.length>0;
+ }
+
+ btn.dataset.count=count||0;
+ btn.dataset.liked=isLiked;
+ btn.innerText=`${isLiked?"Unlike":"Like"} (${count||0})`;
 }
 
 init();
