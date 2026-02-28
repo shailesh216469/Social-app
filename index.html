@@ -2,46 +2,37 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App v3.6</title>
+<title>Ultimate Social App Stable</title>
 
 <style>
-body{font-family:system-ui;background:#f3f4f6;padding:20px;transition:.3s;}
-.dark{background:#0f0f0f;color:white;}
-.card{background:white;padding:16px;border-radius:14px;margin-top:18px;box-shadow:0 3px 15px rgba(0,0,0,.06);}
-.dark .card{background:#1c1c1c;}
+body{font-family:system-ui;background:#f3f4f6;padding:20px;}
+.card{background:white;padding:16px;border-radius:12px;margin-top:18px;box-shadow:0 3px 15px rgba(0,0,0,.06);}
 button{padding:6px 10px;border:none;border-radius:8px;cursor:pointer;margin:4px 4px 0 0;font-size:13px;}
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
-textarea{width:100%;padding:8px;border-radius:10px;margin-top:5px;font-size:14px;}
-.comment-box{margin-top:8px;padding-left:8px;border-left:2px solid #ddd;font-size:13px;}
-.small{font-size:12px;color:#777;}
-.slider{position:relative;overflow:hidden;margin-top:8px;}
-.slider-track{display:flex;transition:.3s;}
-.slider img{max-height:220px;border-radius:10px;margin-right:8px;}
-.arrow{
- position:absolute;top:45%;background:rgba(0,0,0,.5);
- color:white;border-radius:50%;width:30px;height:30px;
- display:flex;align-items:center;justify-content:center;
- cursor:pointer;
+textarea{width:100%;padding:8px;border-radius:8px;margin-top:5px;}
+.comment{margin-top:6px;font-size:13px;}
+.image-scroll{
+  display:flex;
+  overflow-x:auto;
+  gap:8px;
+  margin-top:10px;
 }
-.left{left:5px;}
-.right{right:5px;}
-.dots{text-align:center;margin-top:6px;}
-.dot{display:inline-block;width:6px;height:6px;
- border-radius:50%;background:#ccc;margin:0 3px;}
-.active-dot{background:#4f46e5;}
+.image-scroll img{
+  max-height:220px;
+  border-radius:10px;
+}
 </style>
 </head>
 <body>
 
-<h2>🔥 Ultimate Social App v3.6</h2>
+<h2>🔥 Social App Stable</h2>
 
 <div>
 <span id="userEmail"></span>
 <button id="googleBtn" class="primary">Google</button>
 <button id="guestBtn">Guest</button>
 <button id="logoutBtn">Logout</button>
-<button id="darkBtn">🌙</button>
 </div>
 
 <div class="card">
@@ -69,16 +60,18 @@ let user=null;
 async function init(){
  const {data}=await supabase.auth.getUser();
  user=data.user;
- updateUserUI();
+ updateUI();
+
  supabase.auth.onAuthStateChange((e,s)=>{
   user=s?.user||null;
-  updateUserUI();
+  updateUI();
  });
+
  await loadPosts();
  subscribeRealtime();
 }
 
-function updateUserUI(){
+function updateUI(){
  userEmail.innerText =
  user ? "Logged in: "+(user.email||"Guest") : "Not logged in";
 }
@@ -87,7 +80,7 @@ googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
 guestBtn.onclick=async()=>{
  const {data}=await supabase.auth.signInAnonymously();
  user=data.user;
- updateUserUI();
+ updateUI();
 };
 logoutBtn.onclick=async()=>{
  await supabase.auth.signOut();
@@ -126,35 +119,51 @@ postBtn.onclick=async()=>{
 
 async function loadPosts(){
  feed.innerHTML="";
- const {data}=await supabase.from("posts")
+ const {data,error}=await supabase
+  .from("posts")
   .select("*")
   .order("created_at",{ascending:false});
+
+ if(error){
+  console.log(error);
+  return;
+ }
+
  data?.forEach(renderPost);
 }
 
-/* ================= RENDER POST ================= */
+/* ================= RENDER ================= */
 
 function renderPost(post){
 
  if(document.getElementById("post-"+post.id))return;
 
- let slider="";
+ let imagesHTML="";
+
  if(post.images && post.images.length){
 
-  slider=`<div class="slider" id="slider-${post.id}">
-   <div class="slider-track" id="track-${post.id}">`;
+  imagesHTML=`<div class="image-scroll">`;
 
   post.images.forEach(path=>{
-   const {data}=supabase.storage.from("post-images")
-     .getPublicUrl(path.replace("post-images/",""));
-   slider+=`<img src="${data.publicUrl}">`;
+
+    let finalUrl="";
+
+    if(path.startsWith("http")){
+      // OLD posts (full URL stored)
+      finalUrl=path;
+    } else {
+      // NEW posts (path stored)
+      const filename=path.replace("post-images/","");
+      const {data}=supabase.storage
+        .from("post-images")
+        .getPublicUrl(filename);
+      finalUrl=data.publicUrl;
+    }
+
+    imagesHTML+=`<img src="${finalUrl}">`;
   });
 
-  slider+=`</div>
-   <div class="arrow left" onclick="slide('${post.id}',-1)">‹</div>
-   <div class="arrow right" onclick="slide('${post.id}',1)">›</div>
-   <div class="dots" id="dots-${post.id}"></div>
-  </div>`;
+  imagesHTML+=`</div>`;
  }
 
  const div=document.createElement("div");
@@ -163,16 +172,14 @@ function renderPost(post){
 
  div.innerHTML=`
   <b>${post.username}</b>
-  <div id="post-text-${post.id}">${post.content||""}</div>
+  <div>${post.content||""}</div>
+  ${imagesHTML}
 
   ${
    user && String(user.id)===String(post.user_id)
-   ? `<button onclick="editPost('${post.id}')">Edit</button>
-      <button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
+   ? `<button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
    : ""
   }
-
-  ${slider}
 
   <div id="comments-${post.id}"></div>
   <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
@@ -181,30 +188,26 @@ function renderPost(post){
 
  feed.appendChild(div);
  loadComments(post.id);
- initSlider(post.id,post.images?.length||0);
 }
-
-/* ================= SLIDER ================= */
-
-window.slide=(id,dir)=>{
- const track=document.getElementById("track-"+id);
- const width=track.children[0].offsetWidth+8;
- track.scrollBy({left:dir*width,behavior:"smooth"});
-};
 
 /* ================= DELETE POST ================= */
 
 window.deletePost=async id=>{
- const {data}=await supabase.from("posts")
+
+ const {data}=await supabase
+  .from("posts")
   .select("images")
   .eq("id",id)
   .single();
 
  if(data?.images){
-  for(const path of data.images){
-   const filename=path.replace("post-images/","");
-   await supabase.storage.from("post-images").remove([filename]);
-  }
+   for(const path of data.images){
+
+     if(!path.startsWith("http")){
+       const filename=path.replace("post-images/","");
+       await supabase.storage.from("post-images").remove([filename]);
+     }
+   }
  }
 
  await supabase.from("posts").delete().eq("id",id);
@@ -231,27 +234,20 @@ async function loadComments(postId){
 
  const box=document.getElementById("comments-"+postId);
  box.innerHTML="";
+
  data?.forEach(c=>{
   box.innerHTML+=`
-   <div class="comment-box" id="comment-${c.id}">
+   <div class="comment">
     <b>${c.username}</b>: ${c.content}
-    ${
-     user && String(user.id)===String(c.user_id)
-     ? `<button onclick="deleteComment('${c.id}')">Delete</button>`
-     : ""
-    }
    </div>
   `;
  });
 }
 
-window.deleteComment=async id=>{
- await supabase.from("comments").delete().eq("id",id);
-};
-
 /* ================= REALTIME ================= */
 
 function subscribeRealtime(){
+
  supabase.channel("posts")
   .on("postgres_changes",{event:"*",schema:"public",table:"posts"},
    ()=>loadPosts())
@@ -265,8 +261,6 @@ function subscribeRealtime(){
    })
   .subscribe();
 }
-
-darkBtn.onclick=()=>document.body.classList.toggle("dark");
 
 init();
 });
