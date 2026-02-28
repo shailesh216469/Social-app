@@ -293,27 +293,21 @@ function subscribeRealtime(){
     }
   );
 
-  // COMMENTS
+  // COMMENTS (Stable DELETE FIX)
   channel.on(
     "postgres_changes",
     {event:"*",schema:"public",table:"comments"},
     payload=>{
 
-      console.log("COMMENT EVENT:",payload);
+      const postId =
+        payload.new?.post_id ||
+        payload.old?.post_id;
 
-      let postId=null;
+      if(!postId) return;
 
-      if(payload.new && payload.new.post_id){
-        postId=payload.new.post_id;
-      }
-
-      if(payload.old && payload.old.post_id){
-        postId=payload.old.post_id;
-      }
-
-      if(postId){
+      setTimeout(()=>{
         loadComments(postId);
-      }
+      },100);
     }
   );
 
