@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Stable</title>
+<title>Social App Pro - Ultimate Stable</title>
 
 <style>
 body{
@@ -45,11 +45,16 @@ button{
  color:gray;
  margin-left:6px;
 }
+textarea{
+ width:100%;
+ padding:8px;
+ border-radius:8px;
+}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Stable</h2>
+<h2>🔥 Social App Pro - Ultimate Stable</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -70,7 +75,7 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* INIT */
+/* ================= INIT ================= */
 async function init(){
   const { data } = await supabase.auth.getUser();
   user=data.user;
@@ -79,7 +84,7 @@ async function init(){
 }
 init();
 
-/* CREATE POST */
+/* ================= CREATE POST ================= */
 document.getElementById("postBtn")
 .addEventListener("click", async ()=>{
 
@@ -100,7 +105,7 @@ document.getElementById("postBtn")
   document.getElementById("postInput").value="";
 });
 
-/* LOAD POSTS */
+/* ================= LOAD POSTS ================= */
 async function loadPosts(){
 
   const { data } = await supabase
@@ -112,7 +117,7 @@ async function loadPosts(){
   data?.forEach(post=>renderPost(post));
 }
 
-/* RENDER POST */
+/* ================= RENDER POST ================= */
 function renderPost(post){
 
   const div=document.createElement("div");
@@ -139,7 +144,7 @@ function renderPost(post){
   loadComments(post.id);
 }
 
-/* COMMENTS */
+/* ================= COMMENTS ================= */
 window.addComment = async(postId)=>{
 
   if(!user) return alert("Login first");
@@ -164,19 +169,48 @@ window.deleteComment = async(commentId)=>{
     .eq("id",commentId);
 };
 
-window.editComment = async(commentId)=>{
+/* ===== EDIT COMMENT ===== */
+window.editComment = function(commentId){
 
-  const div=document.getElementById("comment-"+commentId);
-  const textDiv=div.querySelector(".text");
+  const div = document.getElementById("comment-"+commentId);
+  const textDiv = div.querySelector(".text");
 
-  const oldText=textDiv.innerText;
+  const oldText = textDiv.innerText;
 
-  div.innerHTML=`
+  div.dataset.original = oldText;
+
+  div.innerHTML = `
     <input id="edit-${commentId}"
            value="${oldText}"
            style="width:60%">
-    <button onclick="saveEdit('${commentId}')">Save</button>
-    <button onclick="loadPosts()">Cancel</button>
+    <button onclick="saveEdit('${commentId}')">
+      Save
+    </button>
+    <button onclick="cancelEdit('${commentId}')">
+      Cancel
+    </button>
+  `;
+};
+
+window.cancelEdit = function(commentId){
+
+  const div = document.getElementById("comment-"+commentId);
+  const original = div.dataset.original;
+
+  div.innerHTML = `
+    <div>
+      <b>You:</b>
+      <span class="text">${original}</span>
+    </div>
+    <div>
+      <button onclick="editComment('${commentId}')">
+        ✏️
+      </button>
+      <button class="delete"
+        onclick="deleteComment('${commentId}')">
+        ❌
+      </button>
+    </div>
   `;
 };
 
@@ -194,6 +228,7 @@ window.saveEdit = async(commentId)=>{
     .eq("id",commentId);
 };
 
+/* ================= LOAD COMMENTS ================= */
 async function loadComments(postId){
 
   const { data } = await supabase
@@ -241,7 +276,7 @@ async function loadComments(postId){
   });
 }
 
-/* REALTIME */
+/* ================= REALTIME ================= */
 function subscribeRealtime(){
 
   const channel=supabase.channel("global");
