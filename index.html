@@ -118,8 +118,15 @@ postBtn.onclick=async()=>{
   paths.push(filename);
  }
 
- await supabase.from("posts")
-  .insert([{content,images:paths,user_id:user.id,username:user.email}]);
+ const { data, error } = await supabase
+   .from("posts")
+   .insert([{content,images:paths,user_id:user.id,username:user.email}])
+   .select()
+   .single();
+
+ if(data){
+   renderPost(data); // show instantly
+ }
 
  postInput.value="";
  imageInput.value="";
@@ -174,7 +181,7 @@ async function renderPost(post){
  </div>
  `;
 
- feed.appendChild(div);
+ feed.prepend(div);
 
  document.getElementById("like-"+post.id)
   .onclick=()=>toggleLike(post.id);
@@ -188,6 +195,9 @@ window.deletePost=async(postId)=>{
   .delete()
   .eq("id",postId)
   .eq("user_id",user.id);
+
+ const el=document.getElementById("post-"+postId);
+ if(el) el.remove();
 };
 
 /* ================= LIKE SYSTEM ================= */
@@ -198,6 +208,9 @@ async function toggleLike(postId){
 
  likeLock[postId]=true;
 
+ const btn=document.getElementById("like-"+postId);
+ let current=parseInt(btn.innerText.match(/\d+/)[0]);
+
  const { data } = await supabase
    .from("likes")
    .select("id")
@@ -206,12 +219,14 @@ async function toggleLike(postId){
    .maybeSingle();
 
  if (data) {
+   btn.innerText=`Like (${Math.max(current-1,0)})`;
    await supabase
      .from("likes")
      .delete()
      .eq("post_id", postId)
      .eq("user_id", user.id);
  } else {
+   btn.innerText=`Like (${current+1})`;
    await supabase
      .from("likes")
      .insert([{ post_id: postId, user_id: user.id }]);
@@ -224,7 +239,7 @@ async function toggleLike(postId){
 function subscribeRealtime(){
 
  supabase
-  .channel('likes-realtime')
+  .channel('likes-live')
   .on(
     'postgres_changes',
     { event:'*', schema:'public', table:'likes' },
@@ -235,9 +250,6 @@ function subscribeRealtime(){
         payload.old?.post_id;
 
       if(!postId) return;
-
-      const postEl=document.getElementById("post-"+postId);
-      if(!postEl) return;
 
       const btn=document.getElementById("like-"+postId);
       if(!btn) return;
