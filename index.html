@@ -60,7 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
-  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+  "PASTE_YOUR_REAL_PUBLISHABLE_KEY_HERE"
 );
 
 let user = null;
@@ -72,13 +72,18 @@ async function init(){
 
   supabase.auth.onAuthStateChange((e, session)=>{
     user = session?.user || null;
+    updateUserUI();
   });
 
+  updateUserUI();
   await loadPosts();
   subscribeRealtime();
 }
-
 init();
+
+function updateUserUI(){
+  userEmail.innerText = user ? "Logged in" : "Not logged in";
+}
 
 /* ================= LOAD POSTS ================= */
 async function loadPosts(){
@@ -93,7 +98,7 @@ async function loadPosts(){
   }
 }
 
-/* ================= RENDER POST ================= */
+/* ================= RENDER ================= */
 async function renderPost(post){
 
   const div = document.createElement("div");
@@ -105,7 +110,7 @@ async function renderPost(post){
     .select("*",{count:"exact", head:true})
     .eq("post_id", post.id);
 
-  let userLiked=false;
+  let liked=false;
 
   if(user){
     const { data } = await supabase
@@ -114,7 +119,7 @@ async function renderPost(post){
       .eq("post_id", post.id)
       .eq("user_id", user.id);
 
-    userLiked = data?.length>0;
+    liked = data?.length>0;
   }
 
   div.innerHTML=`
@@ -123,7 +128,7 @@ async function renderPost(post){
     <button class="like"
       id="like-${post.id}"
       onclick="toggleLike('${post.id}')">
-      ${userLiked ? "Unlike" : "Like"} (${count || 0})
+      ${liked ? "Unlike" : "Like"} (${count || 0})
     </button>
   `;
 
@@ -139,24 +144,41 @@ window.toggleLike = async (postId) => {
   }
 
   const btn = document.getElementById("like-"+postId);
-  btn.disabled = true;
+  if(!btn) return;
 
-  const { data } = await supabase
-    .from("likes")
-    .select("id")
-    .eq("post_id", postId)
-    .eq("user_id", user.id);
+  btn.disabled=true;
 
-  if(data.length>0){
-    await supabase
+  const current = parseInt(btn.innerText.match(/\d+/)[0]);
+  const isUnlike = btn.innerText.startsWith("Unlike");
+
+  // Instant UI update
+  if(isUnlike){
+    btn.innerText = `Like (${current-1})`;
+  }else{
+    btn.innerText = `Unlike (${current+1})`;
+  }
+
+  // Database update
+  try{
+    const { data } = await supabase
       .from("likes")
-      .delete()
+      .select("id")
       .eq("post_id", postId)
       .eq("user_id", user.id);
-  }else{
-    await supabase
-      .from("likes")
-      .insert([{post_id:postId, user_id:user.id}]);
+
+    if(data.length>0){
+      await supabase
+        .from("likes")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", user.id);
+    }else{
+      await supabase
+        .from("likes")
+        .insert([{post_id:postId, user_id:user.id}]);
+    }
+  }catch(err){
+    console.error(err);
   }
 
   btn.disabled=false;
@@ -186,24 +208,17 @@ function subscribeRealtime(){
         .select("*",{count:"exact", head:true})
         .eq("post_id", postId);
 
-      let userLiked=false;
+      const isUnlike = btn.innerText.startsWith("Unlike");
 
-      if(user){
-        const { data } = await supabase
-          .from("likes")
-          .select("id")
-          .eq("post_id", postId)
-          .eq("user_id", user.id);
-
-        userLiked = data?.length>0;
-      }
-
-      btn.innerText =
-        `${userLiked ? "Unlike" : "Like"} (${count || 0})`;
+      btn.innerText = isUnlike
+        ? `Unlike (${count || 0})`
+        : `Like (${count || 0})`;
     }
   );
 
-  channel.subscribe();
+  channel.subscribe((status)=>{
+    console.log("Realtime:", status);
+  });
 }
 
 });
