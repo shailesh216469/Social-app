@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App vFinal Stable</title>
+<title>Ultimate Social App vFinal Stable FIXED</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;}
@@ -49,7 +49,7 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* ================= TIME FORMAT ================= */
+/* ================= TIME ================= */
 function timeAgo(date){
  const seconds=Math.floor((new Date()-new Date(date))/1000);
  const intervals=[
@@ -101,8 +101,8 @@ postBtn.onclick=async()=>{
  let paths=[];
  for(const f of files){
   const filename=Date.now()+"-"+Math.random()+".jpg";
-  await supabase.storage.from("post-images").upload(filename,f);
-  paths.push(filename);
+  const {error}=await supabase.storage.from("post-images").upload(filename,f);
+  if(!error) paths.push(filename);
  }
 
  await supabase.from("posts")
@@ -118,11 +118,12 @@ async function loadPosts(){
   .from("posts")
   .select("*")
   .order("created_at",{ascending:false});
+
  feed.innerHTML="";
  data?.forEach(renderPost);
 }
 
-/* ================= RENDER POST ================= */
+/* ================= RENDER ================= */
 async function renderPost(post){
 
  if(document.getElementById("post-"+post.id))return;
@@ -170,35 +171,40 @@ async function renderPost(post){
 }
 
 /* ================= DELETE POST ================= */
-async function deletePost(postId) {
+window.deletePost=async(postId)=>{
 
-  // 1️⃣ Get current logged in user
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+ if(!user) return alert("Login required");
 
-  if (userError || !user) {
-    alert("Not authenticated")
-    console.log("User error:", userError)
-    return
-  }
+ const {data:post}=await supabase
+  .from("posts")
+  .select("images,user_id")
+  .eq("id",postId)
+  .single();
 
-  console.log("Deleting as user:", user.id)
+ if(!post || post.user_id!==user.id){
+  return alert("Not allowed");
+ }
 
-  // 2️⃣ Delete only if post belongs to this user
-  const { error } = await supabase
-    .from("posts")
-    .delete()
-    .eq("id", postId)
-    .eq("user_id", user.id)
+ // delete storage images
+ if(post.images?.length){
+  await supabase.storage.from("post-images").remove(post.images);
+ }
 
-  if (error) {
-    console.error("Delete error:", error)
-    alert("Delete failed")
-  } else {
-    console.log("Deleted successfully")
-  }
-}
+ const {error}=await supabase
+  .from("posts")
+  .delete()
+  .eq("id",postId)
+  .eq("user_id",user.id);
 
-/* ================= LIKE SYSTEM ================= */
+ if(error){
+  console.error(error);
+  alert("Delete failed");
+ }else{
+  document.getElementById("post-"+postId)?.remove();
+ }
+};
+
+/* ================= LIKE ================= */
 async function isLiked(postId){
  if(!user)return false;
  const {data}=await supabase.from("likes")
@@ -230,11 +236,14 @@ window.toggleLike=async(postId)=>{
    .insert([{post_id:postId,user_id:user.id}]);
  }
 
+ const postDiv=document.getElementById("post-"+postId);
+ postDiv?.remove();
  loadPosts();
 };
 
 /* ================= COMMENTS ================= */
 window.addComment=async(postId)=>{
+ if(!user)return;
  const input=document.getElementById("comment-input-"+postId);
  if(!input.value)return;
 
@@ -252,6 +261,7 @@ async function loadComments(postId){
   .order("created_at",{ascending:true});
 
  const box=document.getElementById("comments-"+postId);
+ if(!box)return;
  box.innerHTML="";
 
  data?.forEach(c=>{
@@ -270,12 +280,17 @@ async function loadComments(postId){
 }
 
 window.deleteComment=async(id,postId)=>{
- await supabase.from("comments").delete().eq("id",id);
+ await supabase.from("comments")
+  .delete()
+  .eq("id",id)
+  .eq("user_id",user.id);
+
  loadComments(postId);
 };
 
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
+
  supabase.channel("posts")
   .on("postgres_changes",{event:"*",schema:"public",table:"posts"},
    ()=>loadPosts())
