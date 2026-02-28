@@ -238,12 +238,20 @@ async function toggleLike(postId){
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
 
- supabase
-  .channel('likes-live')
-  .on(
+  const channel = supabase.channel('likes-live');
+
+  console.log("Realtime subscribing...");
+
+  channel.on(
     'postgres_changes',
-    { event:'*', schema:'public', table:'likes' },
-    async payload => {
+    {
+      event: '*',
+      schema: 'public',
+      table: 'likes'
+    },
+    async (payload) => {
+
+      console.log("Realtime payload:", payload); // 👈 DEBUG
 
       const postId =
         payload.new?.post_id ||
@@ -251,18 +259,21 @@ function subscribeRealtime(){
 
       if(!postId) return;
 
-      const btn=document.getElementById("like-"+postId);
+      const btn = document.getElementById("like-" + postId);
       if(!btn) return;
 
-      const {count}=await supabase
+      const { count } = await supabase
         .from("likes")
-        .select("*",{count:"exact",head:true})
-        .eq("post_id",postId);
+        .select("*", { count: "exact", head: true })
+        .eq("post_id", postId);
 
-      btn.innerText=`Like (${count||0})`;
+      btn.innerText = `Like (${count || 0})`;
     }
-  )
-  .subscribe();
+  );
+
+  channel.subscribe((status) => {
+    console.log("Realtime status:", status); // 👈 DEBUG
+  });
 }
 
 init();
