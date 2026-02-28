@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Ultimate Stable</title>
+<title>Social App Pro - Stable Realtime</title>
 
 <style>
 body{
@@ -50,7 +50,7 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App Ultimate Stable</h2>
+<h2>🔥 Social App Pro - Stable Realtime</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -69,15 +69,15 @@ const supabase = window.supabase.createClient(
   "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let user = null;
+let user=null;
 
 /* ================= INIT ================= */
 async function init(){
   const { data } = await supabase.auth.getUser();
-  user = data.user;
+  user=data.user;
 
   supabase.auth.onAuthStateChange((e,session)=>{
-    user = session?.user || null;
+    user=session?.user||null;
   });
 
   await loadPosts();
@@ -91,13 +91,14 @@ document.getElementById("postBtn")
 
   if(!user) return alert("Login first");
 
-  const content =
-    document.getElementById("postInput").value.trim();
+  const content=document
+    .getElementById("postInput")
+    .value.trim();
 
   if(!content) return alert("Post empty");
 
   await supabase.from("posts").insert([{
-    content:content,
+    content,
     user_id:user.id,
     username:user.email
   }]);
@@ -119,6 +120,8 @@ async function loadPosts(){
 
 /* ================= RENDER POST ================= */
 function renderPost(post){
+
+  if(document.getElementById("post-"+post.id)) return;
 
   const div=document.createElement("div");
   div.className="card";
@@ -144,7 +147,7 @@ function renderPost(post){
     </div>
   `;
 
-  feed.appendChild(div);
+  feed.prepend(div);
 
   document
     .getElementById("like-"+post.id)
@@ -176,10 +179,10 @@ async function updateLikeUI(postId){
       .eq("user_id",user.id)
       .single();
 
-    liked = data?.active === true;
+    liked=data?.active===true;
   }
 
-  btn.innerText =
+  btn.innerText=
     `${liked?"Unlike":"Like"} (${count||0})`;
 }
 
@@ -223,7 +226,7 @@ window.addComment = async(postId)=>{
     post_id:postId,
     user_id:user.id,
     username:user.email,
-    content:content
+    content
   }]);
 
   input.value="";
@@ -250,23 +253,37 @@ async function loadComments(postId){
   box.innerHTML="";
 
   data?.forEach(c=>{
-    box.innerHTML+=`
-      <div class="comment-item">
-        <div>
-          <b>${c.username||"User"}:</b>
-          ${c.content}
-        </div>
-        ${
-          user && user.id===c.user_id
-          ? `<button class="delete"
-               onclick="deleteComment('${c.id}')">
-               ❌
-             </button>`
-          : ""
-        }
-      </div>
-    `;
+    appendCommentToDOM(c);
   });
+}
+
+function appendCommentToDOM(c){
+
+  const box=document.getElementById("comments-"+c.post_id);
+  if(!box) return;
+
+  if(document.getElementById("comment-"+c.id)) return;
+
+  const div=document.createElement("div");
+  div.className="comment-item";
+  div.id="comment-"+c.id;
+
+  div.innerHTML=`
+    <div>
+      <b>${c.username||"User"}:</b>
+      ${c.content}
+    </div>
+    ${
+      user && user.id===c.user_id
+      ? `<button class="delete"
+           onclick="deleteComment('${c.id}')">
+           ❌
+         </button>`
+      : ""
+    }
+  `;
+
+  box.appendChild(div);
 }
 
 /* ================= REALTIME ================= */
@@ -274,40 +291,40 @@ function subscribeRealtime(){
 
   const channel=supabase.channel("global-sync");
 
-  // POSTS
   channel.on(
     "postgres_changes",
-    {event:"*",schema:"public",table:"posts"},
-    ()=>loadPosts()
+    {event:"INSERT",schema:"public",table:"posts"},
+    payload=>{
+      renderPost(payload.new);
+    }
   );
 
-  // LIKES
   channel.on(
     "postgres_changes",
     {event:"*",schema:"public",table:"likes"},
     payload=>{
-      const postId =
-        payload.new?.post_id ||
+      const postId=
+        payload.new?.post_id||
         payload.old?.post_id;
       if(postId) updateLikeUI(postId);
     }
   );
 
-  // COMMENTS (Stable DELETE FIX)
   channel.on(
     "postgres_changes",
-    {event:"*",schema:"public",table:"comments"},
+    {event:"INSERT",schema:"public",table:"comments"},
     payload=>{
+      appendCommentToDOM(payload.new);
+    }
+  );
 
-      const postId =
-        payload.new?.post_id ||
-        payload.old?.post_id;
-
-      if(!postId) return;
-
-      setTimeout(()=>{
-        loadComments(postId);
-      },100);
+  channel.on(
+    "postgres_changes",
+    {event:"DELETE",schema:"public",table:"comments"},
+    payload=>{
+      const id=payload.old?.id;
+      const el=document.getElementById("comment-"+id);
+      if(el) el.remove();
     }
   );
 
