@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Pro - Clean Stable</title>
+<title>Social App Production</title>
 
 <style>
 body{
@@ -22,47 +22,44 @@ button{
  border:none;
  border-radius:8px;
  cursor:pointer;
- margin:4px 4px 0 0;
+ margin-left:6px;
  font-size:13px;
 }
 .primary{background:#4f46e5;color:white;}
 .delete{background:#ef4444;color:white;}
 .comment-box{
- margin-top:10px;
+ margin-top:12px;
  background:#f9fafb;
  padding:10px;
  border-radius:12px;
 }
 .comment-item{
- font-size:13px;
- padding:6px 0;
  display:flex;
  justify-content:space-between;
  align-items:center;
+ padding:6px 0;
+ font-size:14px;
 }
 .small{
  font-size:11px;
  color:gray;
  margin-left:6px;
 }
-textarea{
- width:100%;
- padding:8px;
- border-radius:8px;
-}
-input{
+textarea,input{
  padding:6px;
  border-radius:6px;
  border:1px solid #ddd;
 }
+textarea{width:100%;}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Pro - Clean Stable</h2>
+<h2>🔥 Social App Production</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
+<br><br>
 <button id="postBtn" class="primary">Post</button>
 </div>
 
@@ -71,7 +68,7 @@ input{
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", async ()=>{
 
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
@@ -95,10 +92,7 @@ document.getElementById("postBtn")
 
   if(!user) return alert("Login first");
 
-  const content=document
-    .getElementById("postInput")
-    .value.trim();
-
+  const content=document.getElementById("postInput").value.trim();
   if(!content) return;
 
   await supabase.from("posts").insert([{
@@ -125,22 +119,23 @@ async function loadPosts(){
 /* ================= RENDER POST ================= */
 function renderPost(post){
 
+  if(document.getElementById("post-"+post.id)) return;
+
   const div=document.createElement("div");
   div.className="card";
   div.id="post-"+post.id;
 
   div.innerHTML=`
     <b>${post.username||"User"}</b>
-    <div>${post.content||""}</div>
+    <div style="margin-top:6px">${post.content||""}</div>
 
     <div class="comment-box">
-      <input id="comment-input-${post.id}" 
+      <input id="comment-input-${post.id}"
              placeholder="Write comment..."
              style="width:70%">
       <button onclick="addComment('${post.id}')">
         Send
       </button>
-
       <div id="comments-${post.id}"></div>
     </div>
   `;
@@ -149,7 +144,8 @@ function renderPost(post){
   loadComments(post.id);
 }
 
-/* ================= ADD COMMENT ================= */
+/* ================= COMMENTS ================= */
+
 window.addComment = async(postId)=>{
 
   if(!user) return alert("Login first");
@@ -168,25 +164,18 @@ window.addComment = async(postId)=>{
   input.value="";
 };
 
-/* ================= DELETE COMMENT ================= */
 window.deleteComment = async(commentId)=>{
 
   await supabase.from("comments")
     .delete()
     .eq("id",commentId);
-
-  // instant remove from UI
-  const div=document.getElementById("comment-"+commentId);
-  if(div) div.remove();
 };
 
-/* ================= EDIT COMMENT ================= */
 window.editComment = function(commentId){
 
   const div=document.getElementById("comment-"+commentId);
   const textSpan=div.querySelector(".text");
   const username=div.dataset.username;
-
   const oldText=textSpan.innerText;
 
   div.innerHTML=`
@@ -197,9 +186,7 @@ window.editComment = function(commentId){
              style="width:60%">
     </div>
     <div>
-      <button onclick="saveEdit('${commentId}')">
-        Save
-      </button>
+      <button onclick="saveEdit('${commentId}')">Save</button>
       <button onclick="cancelEdit('${commentId}','${oldText}','${username}')">
         Cancel
       </button>
@@ -211,21 +198,12 @@ window.cancelEdit = function(commentId,oldText,username){
 
   const div=document.getElementById("comment-"+commentId);
 
-  div.innerHTML=`
-    <div>
-      <b>${username}:</b>
-      <span class="text">${oldText}</span>
-    </div>
-    <div>
-      <button onclick="editComment('${commentId}')">✏️</button>
-      <button class="delete"
-        onclick="deleteComment('${commentId}')">
-        ❌
-      </button>
-    </div>
-  `;
-
-  div.dataset.username=username;
+  div.innerHTML = buildCommentHTML({
+    id:commentId,
+    username,
+    content:oldText,
+    user_id:user?.id
+  });
 };
 
 window.saveEdit = async(commentId)=>{
@@ -242,7 +220,6 @@ window.saveEdit = async(commentId)=>{
     .eq("id",commentId);
 };
 
-/* ================= LOAD COMMENTS ================= */
 async function loadComments(postId){
 
   const { data } = await supabase
@@ -257,66 +234,97 @@ async function loadComments(postId){
   box.innerHTML="";
 
   data?.forEach(c=>{
-
-    const edited =
-      c.updated_at &&
-      c.updated_at!==c.created_at
-        ? `<span class="small">(edited)</span>`
-        : "";
-
-    box.innerHTML+=`
-      <div class="comment-item"
-           id="comment-${c.id}"
-           data-username="${c.username||"User"}">
-
-        <div>
-          <b>${c.username||"User"}:</b>
-          <span class="text">
-            ${c.content}
-          </span>
-          ${edited}
-        </div>
-
-        ${
-          user && user.id===c.user_id
-          ? `<div>
-               <button onclick="editComment('${c.id}')">✏️</button>
-               <button class="delete"
-                 onclick="deleteComment('${c.id}')">
-                 ❌
-               </button>
-             </div>`
-          : ""
-        }
-      </div>
-    `;
+    box.innerHTML+=buildCommentHTML(c);
   });
 }
 
+function buildCommentHTML(c){
+
+  const edited =
+    c.updated_at &&
+    c.updated_at!==c.created_at
+      ? `<span class="small">(edited)</span>`
+      : "";
+
+  return `
+    <div class="comment-item"
+         id="comment-${c.id}"
+         data-username="${c.username||"User"}">
+
+      <div>
+        <b>${c.username||"User"}:</b>
+        <span class="text">${c.content}</span>
+        ${edited}
+      </div>
+
+      ${
+        user && user.id===c.user_id
+        ? `<div>
+             <button onclick="editComment('${c.id}')">✏️</button>
+             <button class="delete"
+               onclick="deleteComment('${c.id}')">
+               ❌
+             </button>
+           </div>`
+        : ""
+      }
+    </div>
+  `;
+}
+
 /* ================= REALTIME ================= */
+
 function subscribeRealtime(){
 
-  const channel=supabase.channel("global");
+  const channel = supabase.channel("production-sync");
 
+  /* POSTS */
   channel.on(
     "postgres_changes",
-    {event:"*",schema:"public",table:"posts"},
-    ()=>loadPosts()
-  );
-
-  channel.on(
-    "postgres_changes",
-    {event:"*",schema:"public",table:"comments"},
+    {event:"INSERT",schema:"public",table:"posts"},
     payload=>{
-      const postId=
-        payload.new?.post_id||
-        payload.old?.post_id;
-
-      if(postId) loadComments(postId);
+      renderPost(payload.new);
     }
   );
 
-  channel.subscribe();
+  channel.on(
+    "postgres_changes",
+    {event:"DELETE",schema:"public",table:"posts"},
+    payload=>{
+      const el=document.getElementById("post-"+payload.old.id);
+      if(el) el.remove();
+    }
+  );
+
+  /* COMMENTS */
+  channel.on(
+    "postgres_changes",
+    {event:"INSERT",schema:"public",table:"comments"},
+    payload=>{
+      loadComments(payload.new.post_id);
+    }
+  );
+
+  channel.on(
+    "postgres_changes",
+    {event:"UPDATE",schema:"public",table:"comments"},
+    payload=>{
+      loadComments(payload.new.post_id);
+    }
+  );
+
+  channel.on(
+    "postgres_changes",
+    {event:"DELETE",schema:"public",table:"comments"},
+    payload=>{
+      const el=document.getElementById("comment-"+payload.old.id);
+      if(el) el.remove();
+    }
+  );
+
+  channel.subscribe(status=>{
+    console.log("Realtime:",status);
+  });
 }
 
 });
