@@ -297,48 +297,48 @@ function subscribeRealtime(){
     )
     .subscribe();
 
-  // LIKES INSERT + DELETE
-  supabase
-    .channel('likes-live')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'likes' },
-      async payload => {
+  // LIKES REALTIME (clean + stable)
+supabase
+  .channel('likes-live')
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'likes' },
+    async payload => {
 
-        const postId = payload.new?.post_id || payload.old?.post_id;
-        if(!postId) return;
+      const postId =
+        payload.new?.post_id || payload.old?.post_id;
 
-        const postEl = document.getElementById("post-"+postId);
-        if(!postEl) return;
+      if(!postId) return;
 
-        const btn = postEl.querySelector(".like");
-        if(!btn) return;
+      const postEl =
+        document.getElementById("post-" + postId);
+      if(!postEl) return;
 
-        // Recalculate like count
-        const { count } = await supabase
-          .from("likes")
-          .select("*",{count:"exact",head:true})
-          .eq("post_id",postId);
+      const btn =
+        postEl.querySelector(".like");
+      if(!btn) return;
 
-        btn.dataset.count = count || 0;
+      // get updated count
+      const { count } = await supabase
+        .from("likes")
+        .select("*", { count: "exact", head: true })
+        .eq("post_id", postId);
 
-        // Update button text
-        const liked = await supabase
-          .from("likes")
-          .select("id")
-          .eq("post_id",postId)
-          .eq("user_id",user?.id);
+      btn.dataset.count = count || 0;
 
-        const isLiked = liked.data?.length > 0;
+      // keep current button state
+      const liked =
+        btn.dataset.liked === "true";
 
-        btn.dataset.liked = isLiked;
-        btn.innerText = `${isLiked?"Unlike":"Like"} (${count||0})`;
-
-      }
-    )
-    .subscribe();
+      btn.innerText =
+        `${liked ? "Unlike" : "Like"} (${count || 0})`;
+    }
+  )
+  .subscribe();
 
 }
+init();
+});
 </script>
 </body>
 </html>
