@@ -68,190 +68,125 @@ textarea{
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
-document.addEventListener("DOMContentLoaded",()=>{
+document.addEventListener("DOMContentLoaded", () => {
 
 const supabase = window.supabase.createClient(
-"https://dgehzagvyrxbnnvgsiff.supabase.co",
-"sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+  "https://dgehzagvyrxbnnvgsiff.supabase.co",
+  "sb_publishable_YOUR_KEY_HERE"
 );
 
-let user=null;
-let likeLock={};
+let user = null;
 
 /* ================= INIT ================= */
 async function init(){
- const {data}=await supabase.auth.getUser();
- user=data.user;
- updateUI();
+  const { data } = await supabase.auth.getUser();
+  user = data.user;
 
- supabase.auth.onAuthStateChange((e,s)=>{
-  user=s?.user||null;
-  updateUI();
- });
+  supabase.auth.onAuthStateChange((e, session)=>{
+    user = session?.user || null;
+  });
 
- loadPosts();
- subscribeRealtime();
+  await loadPosts();
+  subscribeRealtime();
 }
 
-function updateUI(){
- userEmail.innerText =
- user ? "Logged in: "+(user.email||"Guest") : "Not logged in";
-}
-
-googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
-guestBtn.onclick=()=>supabase.auth.signInAnonymously();
-logoutBtn.onclick=async()=>{await supabase.auth.signOut();location.reload();};
-
-/* ================= CREATE POST ================= */
-postBtn.onclick=async()=>{
- if(!user)return alert("Login first");
-
- const content=postInput.value.trim();
- const files=imageInput.files;
- if(!content && files.length===0)return alert("Post empty");
-
- let paths=[];
- for(const f of files){
-  const filename=Date.now()+"-"+Math.random()+".jpg";
-  await supabase.storage.from("post-images").upload(filename,f);
-  paths.push(filename);
- }
-
- const { data, error } = await supabase
-   .from("posts")
-   .insert([{content,images:paths,user_id:user.id,username:user.email}])
-   .select()
-   .single();
-
- if(data){
-   renderPost(data); // show instantly
- }
-
- postInput.value="";
- imageInput.value="";
-};
+init();
 
 /* ================= LOAD POSTS ================= */
 async function loadPosts(){
- const {data}=await supabase
-  .from("posts")
-  .select("*")
-  .order("created_at",{ascending:false});
+  const { data } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at",{ascending:false});
 
- feed.innerHTML="";
- data?.forEach(renderPost);
+  feed.innerHTML="";
+  for(const post of data){
+    await renderPost(post);
+  }
 }
 
-/* ================= RENDER ================= */
+/* ================= RENDER POST ================= */
 async function renderPost(post){
 
- if(document.getElementById("post-"+post.id))return;
+  const div = document.createElement("div");
+  div.className="card";
+  div.id="post-"+post.id;
 
- let imagesHTML="";
- if(post.images?.length){
-  imagesHTML=`<div class="image-scroll">`;
-  post.images.forEach(file=>{
-   const {data}=supabase.storage.from("post-images").getPublicUrl(file);
-   imagesHTML+=`<img src="${data.publicUrl}">`;
-  });
-  imagesHTML+=`</div>`;
- }
+  const { count } = await supabase
+    .from("likes")
+    .select("*",{count:"exact", head:true})
+    .eq("post_id", post.id);
 
- const {count}=await supabase
-  .from("likes")
-  .select("*",{count:"exact",head:true})
-  .eq("post_id",post.id);
+  let userLiked=false;
 
- const div=document.createElement("div");
- div.className="card";
- div.id="post-"+post.id;
+  if(user){
+    const { data } = await supabase
+      .from("likes")
+      .select("id")
+      .eq("post_id", post.id)
+      .eq("user_id", user.id);
 
- div.innerHTML=`
- <b>${post.username||"User"}</b>
- <div>${post.content||""}</div>
- ${imagesHTML}
- <div>
-  <button class="like" id="like-${post.id}">
-   Like (${count||0})
-  </button>
-  ${user && user.id===post.user_id ?
-   `<button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
-   :""}
- </div>
- `;
+    userLiked = data?.length>0;
+  }
 
- feed.prepend(div);
+  div.innerHTML=`
+    <b>${post.username || "User"}</b>
+    <div>${post.content || ""}</div>
+    <button id="like-${post.id}" 
+      onclick="toggleLike('${post.id}')">
+      ${userLiked ? "Unlike" : "Like"} (${count || 0})
+    </button>
+  `;
 
- document.getElementById("like-"+post.id)
-  .onclick=()=>toggleLike(post.id);
+  feed.appendChild(div);
 }
 
-/* ================= DELETE POST ================= */
-window.deletePost=async(postId)=>{
- if(!user)return;
+/* ================= TOGGLE LIKE ================= */
+window.toggleLike = async (postId) => {
 
- await supabase.from("posts")
-  .delete()
-  .eq("id",postId)
-  .eq("user_id",user.id);
+  if(!user){
+    alert("Login first");
+    return;
+  }
 
- const el=document.getElementById("post-"+postId);
- if(el) el.remove();
+  const btn = document.getElementById("like-"+postId);
+  btn.disabled = true;
+
+  const { data } = await supabase
+    .from("likes")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("user_id", user.id);
+
+  if(data.length>0){
+    // Unlike
+    await supabase
+      .from("likes")
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", user.id);
+  }else{
+    // Like
+    await supabase
+      .from("likes")
+      .insert([{post_id:postId, user_id:user.id}]);
+  }
+
+  btn.disabled=false;
 };
-
-/* ================= LIKE SYSTEM ================= */
-async function toggleLike(postId){
-
- if(!user) return;
- if(likeLock[postId]) return;
-
- likeLock[postId]=true;
-
- const btn=document.getElementById("like-"+postId);
- let current=parseInt(btn.innerText.match(/\d+/)[0]);
-
- const { data } = await supabase
-   .from("likes")
-   .select("id")
-   .eq("post_id", postId)
-   .eq("user_id", user.id)
-   .maybeSingle();
-
- if (data) {
-   btn.innerText=`Like (${Math.max(current-1,0)})`;
-   await supabase
-     .from("likes")
-     .delete()
-     .eq("post_id", postId)
-     .eq("user_id", user.id);
- } else {
-   btn.innerText=`Like (${current+1})`;
-   await supabase
-     .from("likes")
-     .insert([{ post_id: postId, user_id: user.id }]);
- }
-
- likeLock[postId]=false;
-}
 
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
 
-  const channel = supabase.channel('likes-live');
-
-  console.log("Realtime subscribing...");
+  const channel = supabase.channel("likes-live");
 
   channel.on(
-    'postgres_changes',
-    {
-      event: '*',
-      schema: 'public',
-      table: 'likes'
-    },
-    async (payload) => {
-
-      console.log("Realtime payload:", payload); // 👈 DEBUG
+    "postgres_changes",
+    { event: "*", schema: "public", table: "likes" },
+    async (payload)=>{
 
       const postId =
         payload.new?.post_id ||
@@ -259,24 +194,36 @@ function subscribeRealtime(){
 
       if(!postId) return;
 
-      const btn = document.getElementById("like-" + postId);
+      const btn = document.getElementById("like-"+postId);
       if(!btn) return;
 
+      // fresh count
       const { count } = await supabase
         .from("likes")
-        .select("*", { count: "exact", head: true })
+        .select("*",{count:"exact", head:true})
         .eq("post_id", postId);
 
-      btn.innerText = `Like (${count || 0})`;
+      // check current user state
+      let userLiked=false;
+
+      if(user){
+        const { data } = await supabase
+          .from("likes")
+          .select("id")
+          .eq("post_id", postId)
+          .eq("user_id", user.id);
+
+        userLiked = data?.length>0;
+      }
+
+      btn.innerText =
+        `${userLiked ? "Unlike" : "Like"} (${count || 0})`;
     }
   );
 
-  channel.subscribe((status) => {
-    console.log("Realtime status:", status); // 👈 DEBUG
-  });
+  channel.subscribe();
 }
 
-init();
 });
 </script>
 </body>
