@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App Production</title>
+<title>Social App Production + Likes</title>
 
 <style>
 body{
@@ -26,6 +26,7 @@ button{
  font-size:13px;
 }
 .primary{background:#4f46e5;color:white;}
+.like-btn{background:#10b981;color:white;}
 .delete{background:#ef4444;color:white;}
 .comment-box{
  margin-top:12px;
@@ -55,7 +56,7 @@ textarea{width:100%;}
 </head>
 <body>
 
-<h2>🔥 Social App Production</h2>
+<h2>🔥 Social App Production + Likes</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -113,11 +114,13 @@ async function loadPosts(){
     .order("created_at",{ascending:false});
 
   feed.innerHTML="";
-  data?.forEach(post=>renderPost(post));
+  for(const post of data){
+    await renderPost(post);
+  }
 }
 
 /* ================= RENDER POST ================= */
-function renderPost(post){
+async function renderPost(post){
 
   if(document.getElementById("post-"+post.id)) return;
 
@@ -125,9 +128,18 @@ function renderPost(post){
   div.className="card";
   div.id="post-"+post.id;
 
+  const likeCount = await getLikeCount(post.id);
+  const userLiked = await didUserLike(post.id);
+
   div.innerHTML=`
     <b>${post.username||"User"}</b>
     <div style="margin-top:6px">${post.content||""}</div>
+
+    <button class="like-btn"
+            id="like-${post.id}"
+            onclick="toggleLike('${post.id}')">
+      ${userLiked ? "Unlike" : "Like"} (${likeCount})
+    </button>
 
     <div class="comment-box">
       <input id="comment-input-${post.id}"
@@ -144,10 +156,54 @@ function renderPost(post){
   loadComments(post.id);
 }
 
+/* ================= LIKE SYSTEM ================= */
+
+async function getLikeCount(postId){
+  const { count } = await supabase
+    .from("likes")
+    .select("*",{count:"exact",head:true})
+    .eq("post_id",postId);
+  return count || 0;
+}
+
+async function didUserLike(postId){
+  if(!user) return false;
+
+  const { data } = await supabase
+    .from("likes")
+    .select("id")
+    .eq("post_id",postId)
+    .eq("user_id",user.id);
+
+  return data.length>0;
+}
+
+window.toggleLike = async function(postId){
+
+  if(!user) return alert("Login first");
+
+  const { data } = await supabase
+    .from("likes")
+    .select("id")
+    .eq("post_id",postId)
+    .eq("user_id",user.id);
+
+  if(data.length>0){
+    await supabase
+      .from("likes")
+      .delete()
+      .eq("post_id",postId)
+      .eq("user_id",user.id);
+  }else{
+    await supabase
+      .from("likes")
+      .insert([{post_id:postId,user_id:user.id}]);
+  }
+};
+
 /* ================= COMMENTS ================= */
 
 window.addComment = async(postId)=>{
-
   if(!user) return alert("Login first");
 
   const input=document.getElementById("comment-input-"+postId);
@@ -164,62 +220,6 @@ window.addComment = async(postId)=>{
   input.value="";
 };
 
-window.deleteComment = async(commentId)=>{
-
-  await supabase.from("comments")
-    .delete()
-    .eq("id",commentId);
-};
-
-window.editComment = function(commentId){
-
-  const div=document.getElementById("comment-"+commentId);
-  const textSpan=div.querySelector(".text");
-  const username=div.dataset.username;
-  const oldText=textSpan.innerText;
-
-  div.innerHTML=`
-    <div>
-      <b>${username}:</b>
-      <input id="edit-${commentId}"
-             value="${oldText}"
-             style="width:60%">
-    </div>
-    <div>
-      <button onclick="saveEdit('${commentId}')">Save</button>
-      <button onclick="cancelEdit('${commentId}','${oldText}','${username}')">
-        Cancel
-      </button>
-    </div>
-  `;
-};
-
-window.cancelEdit = function(commentId,oldText,username){
-
-  const div=document.getElementById("comment-"+commentId);
-
-  div.innerHTML = buildCommentHTML({
-    id:commentId,
-    username,
-    content:oldText,
-    user_id:user?.id
-  });
-};
-
-window.saveEdit = async(commentId)=>{
-
-  const input=document.getElementById("edit-"+commentId);
-  const newText=input.value.trim();
-  if(!newText) return;
-
-  await supabase.from("comments")
-    .update({
-      content:newText,
-      updated_at:new Date()
-    })
-    .eq("id",commentId);
-};
-
 async function loadComments(postId){
 
   const { data } = await supabase
@@ -234,42 +234,12 @@ async function loadComments(postId){
   box.innerHTML="";
 
   data?.forEach(c=>{
-    box.innerHTML+=buildCommentHTML(c);
-  });
-}
-
-function buildCommentHTML(c){
-
-  const edited =
-    c.updated_at &&
-    c.updated_at!==c.created_at
-      ? `<span class="small">(edited)</span>`
-      : "";
-
-  return `
-    <div class="comment-item"
-         id="comment-${c.id}"
-         data-username="${c.username||"User"}">
-
-      <div>
-        <b>${c.username||"User"}:</b>
-        <span class="text">${c.content}</span>
-        ${edited}
+    box.innerHTML+=`
+      <div class="comment-item">
+        <div><b>${c.username||"User"}:</b> ${c.content}</div>
       </div>
-
-      ${
-        user && user.id===c.user_id
-        ? `<div>
-             <button onclick="editComment('${c.id}')">✏️</button>
-             <button class="delete"
-               onclick="deleteComment('${c.id}')">
-               ❌
-             </button>
-           </div>`
-        : ""
-      }
-    </div>
-  `;
+    `;
+  });
 }
 
 /* ================= REALTIME ================= */
@@ -278,53 +248,34 @@ function subscribeRealtime(){
 
   const channel = supabase.channel("production-sync");
 
-  /* POSTS */
   channel.on(
     "postgres_changes",
-    {event:"INSERT",schema:"public",table:"posts"},
-    payload=>{
-      renderPost(payload.new);
-    }
+    {event:"*",schema:"public",table:"posts"},
+    ()=>loadPosts()
   );
 
   channel.on(
     "postgres_changes",
-    {event:"DELETE",schema:"public",table:"posts"},
-    payload=>{
-      const el=document.getElementById("post-"+payload.old.id);
-      if(el) el.remove();
+    {event:"*",schema:"public",table:"likes"},
+    async payload=>{
+      const postId =
+        payload.new?.post_id ||
+        payload.old?.post_id;
+
+      if(!postId) return;
+
+      const btn=document.getElementById("like-"+postId);
+      if(!btn) return;
+
+      const count = await getLikeCount(postId);
+      const liked = await didUserLike(postId);
+
+      btn.innerText =
+        `${liked?"Unlike":"Like"} (${count})`;
     }
   );
 
-  /* COMMENTS */
-  channel.on(
-    "postgres_changes",
-    {event:"INSERT",schema:"public",table:"comments"},
-    payload=>{
-      loadComments(payload.new.post_id);
-    }
-  );
-
-  channel.on(
-    "postgres_changes",
-    {event:"UPDATE",schema:"public",table:"comments"},
-    payload=>{
-      loadComments(payload.new.post_id);
-    }
-  );
-
-  channel.on(
-    "postgres_changes",
-    {event:"DELETE",schema:"public",table:"comments"},
-    payload=>{
-      const el=document.getElementById("comment-"+payload.old.id);
-      if(el) el.remove();
-    }
-  );
-
-  channel.subscribe(status=>{
-    console.log("Realtime:",status);
-  });
+  channel.subscribe();
 }
 
 });
