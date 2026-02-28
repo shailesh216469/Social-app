@@ -170,21 +170,33 @@ async function renderPost(post){
 }
 
 /* ================= DELETE POST ================= */
-window.deletePost = async (id) => {
+async function deletePost(postId) {
 
+  // 1️⃣ Get current logged in user
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    alert("Not authenticated")
+    console.log("User error:", userError)
+    return
+  }
+
+  console.log("Deleting as user:", user.id)
+
+  // 2️⃣ Delete only if post belongs to this user
   const { error } = await supabase
     .from("posts")
     .delete()
-    .eq("id", id);
+    .eq("id", postId)
+    .eq("user_id", user.id)
 
-  console.log("DELETE ERROR:", error);
-
-  if (!error) {
-    document.getElementById("post-"+id)?.remove();
+  if (error) {
+    console.error("Delete error:", error)
+    alert("Delete failed")
   } else {
-    alert("Delete blocked by RLS");
+    console.log("Deleted successfully")
   }
-};
+}
 
 /* ================= LIKE SYSTEM ================= */
 async function isLiked(postId){
