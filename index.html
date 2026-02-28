@@ -45,7 +45,6 @@ textarea{
  border-radius:12px;
  object-fit:cover;
 }
-.small{font-size:12px;color:gray;}
 </style>
 </head>
 <body>
@@ -78,7 +77,7 @@ const supabase = window.supabase.createClient(
 );
 
 let user=null;
-let likeProcessing={};
+let likeLock={};
 
 /* ================= INIT ================= */
 async function init(){
@@ -166,7 +165,7 @@ async function renderPost(post){
  <div>${post.content||""}</div>
  ${imagesHTML}
  <div>
-  <button class="like" onclick="toggleLike('${post.id}')">
+  <button class="like" id="like-${post.id}">
    Like (${count||0})
   </button>
   ${user && user.id===post.user_id ?
@@ -176,30 +175,28 @@ async function renderPost(post){
  `;
 
  feed.appendChild(div);
+
+ document.getElementById("like-"+post.id)
+  .onclick=()=>toggleLike(post.id);
 }
 
 /* ================= DELETE POST ================= */
 window.deletePost=async(postId)=>{
  if(!user)return;
 
- const {data:post}=await supabase
-  .from("posts")
-  .select("user_id")
+ await supabase.from("posts")
+  .delete()
   .eq("id",postId)
-  .single();
-
- if(!post || post.user_id!==user.id)
-  return alert("Not allowed");
-
- await supabase.from("posts").delete().eq("id",postId);
+  .eq("user_id",user.id);
 };
 
 /* ================= LIKE SYSTEM ================= */
-window.toggleLike=async(postId)=>{
- if(!user)return;
+async function toggleLike(postId){
 
- if(likeProcessing[postId]) return;
- likeProcessing[postId]=true;
+ if(!user) return;
+ if(likeLock[postId]) return;
+
+ likeLock[postId]=true;
 
  const { data } = await supabase
    .from("likes")
@@ -220,43 +217,40 @@ window.toggleLike=async(postId)=>{
      .insert([{ post_id: postId, user_id: user.id }]);
  }
 
- likeProcessing[postId]=false;
-};
+ likeLock[postId]=false;
+}
 
 /* ================= REALTIME ================= */
 function subscribeRealtime(){
 
  supabase
-  .channel('likes-live')
+  .channel('likes-realtime')
   .on(
     'postgres_changes',
     { event:'*', schema:'public', table:'likes' },
-    payload=>{
+    async payload => {
+
       const postId =
         payload.new?.post_id ||
         payload.old?.post_id;
 
       if(!postId) return;
-      updateLikeCount(postId);
+
+      const postEl=document.getElementById("post-"+postId);
+      if(!postEl) return;
+
+      const btn=document.getElementById("like-"+postId);
+      if(!btn) return;
+
+      const {count}=await supabase
+        .from("likes")
+        .select("*",{count:"exact",head:true})
+        .eq("post_id",postId);
+
+      btn.innerText=`Like (${count||0})`;
     }
   )
   .subscribe();
-
-}
-
-async function updateLikeCount(postId){
- const postEl=document.getElementById("post-"+postId);
- if(!postEl) return;
-
- const btn=postEl.querySelector(".like");
- if(!btn) return;
-
- const {count}=await supabase
-  .from("likes")
-  .select("*",{count:"exact",head:true})
-  .eq("post_id",postId);
-
- btn.innerText=`Like (${count||0})`;
 }
 
 init();
