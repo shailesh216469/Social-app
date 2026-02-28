@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Realtime Stable</title>
+<title>Social App – Realtime Final</title>
 
 <style>
 body{
@@ -36,7 +36,7 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App – Realtime Stable</h2>
+<h2>🔥 Social App – Realtime Final</h2>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -62,7 +62,6 @@ let user=null;
 async function init(){
  const { data } = await supabase.auth.getUser();
  user=data.user;
-
  await loadPosts();
  subscribeRealtime();
 }
@@ -104,8 +103,6 @@ async function loadPosts(){
 /* ================= RENDER POST ================= */
 async function renderPost(post){
 
- if(document.getElementById("post-"+post.id)) return;
-
  const likeCount = await getLikeCount(post.id);
  const liked = await didUserLike(post.id);
 
@@ -127,7 +124,7 @@ async function renderPost(post){
  feed.prepend(div);
 }
 
-/* ================= LIKE SYSTEM ================= */
+/* ================= LIKE FUNCTIONS ================= */
 
 async function getLikeCount(postId){
  const { count } = await supabase
@@ -177,16 +174,22 @@ window.toggleLike = async function(postId){
 
 function subscribeRealtime(){
 
- const channel = supabase.channel("realtime-likes");
+ const channel = supabase.channel("likes-live");
 
+ /* POST INSERT */
  channel.on(
    "postgres_changes",
-   {
-     event: "*",
-     schema: "public",
-     table: "likes"
-   },
-   async payload => {
+   {event:"INSERT",schema:"public",table:"posts"},
+   payload=>{
+     renderPost(payload.new);
+   }
+ );
+
+ /* LIKE EVENTS */
+ channel.on(
+   "postgres_changes",
+   {event:"*",schema:"public",table:"likes"},
+   async payload=>{
 
      console.log("LIKE EVENT:",payload);
 
@@ -196,32 +199,27 @@ function subscribeRealtime(){
 
      if(!postId) return;
 
-     const btn=document.getElementById("like-"+postId);
-     if(!btn) return;
-
-     const count = await getLikeCount(postId);
-     const liked = await didUserLike(postId);
-
-     btn.innerText =
-       `${liked?"Unlike":"Like"} (${count})`;
-   }
- );
-
- channel.on(
-   "postgres_changes",
-   {
-     event:"INSERT",
-     schema:"public",
-     table:"posts"
-   },
-   payload=>{
-     renderPost(payload.new);
+     await updateLikeUI(postId);
    }
  );
 
  channel.subscribe(status=>{
    console.log("Realtime:",status);
  });
+}
+
+/* ================= UPDATE LIKE UI ================= */
+
+async function updateLikeUI(postId){
+
+ const btn = document.getElementById("like-"+postId);
+ if(!btn) return;
+
+ const count = await getLikeCount(postId);
+ const liked = await didUserLike(postId);
+
+ btn.innerText =
+   `${liked?"Unlike":"Like"} (${count})`;
 }
 
 });
