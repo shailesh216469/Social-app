@@ -84,6 +84,7 @@ async function init(){
 function updateUI(){
  userEmail.innerText =
  user ? "Logged in: "+(user.email||"Guest") : "Not logged in";
+console.log("Current UID:", user?.id);
 }
 
 googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
