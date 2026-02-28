@@ -5,281 +5,301 @@
 <title>Ultimate Social App</title>
 
 <style>
-body{font-family:Arial;padding:20px;background:#f4f4f4;transition:0.3s;}
-.dark{background:#111;color:white;}
-.post{background:white;padding:15px;margin-top:15px;border-radius:8px;}
-.dark .post{background:#1e1e1e;}
-button{margin-right:5px;margin-top:5px;}
-.small{font-size:12px;opacity:0.7;}
-.comment-box{margin-top:8px;padding-left:10px;border-left:2px solid #ccc;}
-.comment-input{width:100%;margin-top:5px;}
-.comment-item{margin-bottom:5px;}
-.edit-area{width:100%;margin-top:5px;}
-.image-preview img{max-width:100%;margin-top:8px;border-radius:8px;}
-.liked{background:red;color:white;}
-.not-liked{background:#ddd;}
+body{
+  font-family: system-ui, -apple-system;
+  background:#f2f2f2;
+  padding:20px;
+  transition:.3s;
+}
+.dark{background:#0f0f0f;color:white;}
+.card{
+  background:white;
+  padding:16px;
+  margin-top:15px;
+  border-radius:12px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.05);
+}
+.dark .card{background:#1c1c1c;}
+button{
+  padding:6px 12px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+}
+.primary{background:#4f46e5;color:white;}
+.like-btn{background:#eee;}
+.liked{background:#ef4444;color:white;}
+textarea{width:100%;border-radius:8px;padding:8px;}
+img{max-width:100%;border-radius:10px;margin-top:8px;}
+.small{font-size:12px;opacity:.6;}
+.comment-box{margin-top:10px;padding-left:10px;border-left:2px solid #ddd;}
+.user-bar{margin-bottom:15px;}
 </style>
 </head>
 <body>
 
-<button id="darkBtn">🌙 Dark Mode</button>
 <h2>🔥 Ultimate Social App</h2>
 
-<button id="loginBtn">Login with Google</button>
-<button id="logoutBtn">Logout</button>
+<div class="user-bar">
+  <span id="userEmail"></span>
+  <button id="googleBtn" class="primary">Google Login</button>
+  <button id="guestBtn">Guest Login</button>
+  <button id="logoutBtn">Logout</button>
+  <button id="darkBtn">🌙</button>
+</div>
 
-<hr>
+<div class="card">
+  <textarea id="postInput" placeholder="Write something..."></textarea>
+  <input type="file" id="imageInput" multiple accept="image/*">
+  <button id="postBtn" class="primary">Post</button>
+</div>
 
-<textarea id="postInput" placeholder="Write something..."></textarea>
-<br>
-<input type="file" id="imageInput" multiple accept="image/*">
-<br>
-<button id="postBtn">Post</button>
-
-<hr>
-<div id="posts"></div>
+<div id="feed"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 
 <script>
-document.addEventListener("DOMContentLoaded", function(){
+document.addEventListener("DOMContentLoaded",()=>{
 
 const supabase = window.supabase.createClient(
-  "https://dgehzagvyrxbnnvgsiff.supabase.co",
-  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+"https://dgehzagvyrxbnnvgsiff.supabase.co",
+"sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let currentUser=null;
+let user=null;
 
 /* ================= TIME ================= */
-
-function timeAgo(dateString){
-  const now=new Date();
-  const past=new Date(dateString);
-  const seconds=Math.floor((now-past)/1000);
-  if(seconds<60) return "Just now";
-  const minutes=Math.floor(seconds/60);
-  if(minutes<60) return minutes+"m ago";
-  const hours=Math.floor(minutes/60);
-  if(hours<24) return hours+"h ago";
-  const days=Math.floor(hours/24);
-  if(days<7) return days+"d ago";
-  return past.toLocaleDateString();
-}
-
-/* ================= IMAGE COMPRESSION ================= */
-
-async function compressImage(file){
-  return new Promise((resolve)=>{
-    const reader=new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload=function(event){
-      const img=new Image();
-      img.src=event.target.result;
-      img.onload=function(){
-        const canvas=document.createElement("canvas");
-        const ctx=canvas.getContext("2d");
-        const MAX_WIDTH=1080;
-        let width=img.width;
-        let height=img.height;
-        if(width>MAX_WIDTH){
-          height=height*(MAX_WIDTH/width);
-          width=MAX_WIDTH;
-        }
-        canvas.width=width;
-        canvas.height=height;
-        ctx.drawImage(img,0,0,width,height);
-        canvas.toBlob(blob=>resolve(blob),"image/jpeg",0.7);
-      };
-    };
-  });
-}
-
-async function uploadImages(files){
-  const urls=[];
-  for(const file of files){
-    const compressed=await compressImage(file);
-    const fileName=Date.now()+"-"+Math.random().toString(36).substring(2)+".jpg";
-    await supabase.storage.from("post-images").upload(fileName,compressed,{contentType:"image/jpeg"});
-    const { data }=supabase.storage.from("post-images").getPublicUrl(fileName);
-    urls.push(data.publicUrl);
-  }
-  return urls;
+function timeAgo(date){
+  const s=Math.floor((Date.now()-new Date(date))/1000);
+  if(s<60)return"Just now";
+  if(s<3600)return Math.floor(s/60)+"m ago";
+  if(s<86400)return Math.floor(s/3600)+"h ago";
+  return Math.floor(s/86400)+"d ago";
 }
 
 /* ================= AUTH ================= */
 
 async function init(){
-  const { data }=await supabase.auth.getUser();
-  currentUser=data.user;
-  loadPosts();
+  const {data}=await supabase.auth.getUser();
+  user=data.user;
+  updateUserUI();
+  loadInitialPosts();
   subscribeRealtime();
 }
 
-async function login(){
-  await supabase.auth.signInWithOAuth({provider:'google'});
+function updateUserUI(){
+  document.getElementById("userEmail").innerText =
+    user ? "Logged in: "+(user.email || "Guest") : "Not logged in";
 }
 
-async function logout(){
+document.getElementById("googleBtn").onclick=
+()=>supabase.auth.signInWithOAuth({provider:"google"});
+
+document.getElementById("guestBtn").onclick=
+async()=>{
+  const {data}=await supabase.auth.signInAnonymously();
+  user=data.user;
+  updateUserUI();
+};
+
+document.getElementById("logoutBtn").onclick=
+async()=>{
   await supabase.auth.signOut();
   location.reload();
+};
+
+/* ================= IMAGE COMPRESSION ================= */
+
+async function compressImage(file){
+  return new Promise(res=>{
+    const r=new FileReader();
+    r.readAsDataURL(file);
+    r.onload=e=>{
+      const img=new Image();
+      img.src=e.target.result;
+      img.onload=()=>{
+        const canvas=document.createElement("canvas");
+        const MAX=1080;
+        let w=img.width,h=img.height;
+        if(w>MAX){h=h*(MAX/w);w=MAX;}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        canvas.toBlob(b=>res(b),"image/jpeg",0.7);
+      }
+    }
+  })
 }
 
-/* ================= POSTS ================= */
+/* ================= POST CREATE ================= */
 
-async function createPost(){
-  if(!currentUser) return alert("Login first");
+document.getElementById("postBtn").onclick=async()=>{
+
+  if(!user)return alert("Login first");
+
   const content=document.getElementById("postInput").value;
   const files=document.getElementById("imageInput").files;
-  let imageUrls=[];
-  if(files.length>0){
-    imageUrls=await uploadImages(files);
+  let urls=[];
+
+  for(const f of files){
+    const blob=await compressImage(f);
+    const name=Date.now()+"-"+Math.random()+".jpg";
+    await supabase.storage.from("post-images").upload(name,blob);
+    const {data}=supabase.storage.from("post-images").getPublicUrl(name);
+    urls.push(data.publicUrl);
   }
-  if(!content && imageUrls.length===0) return;
+
   await supabase.from("posts").insert([{
-    content,
-    images:imageUrls,
-    user_id:currentUser.id,
-    username:currentUser.email
+    content,images:urls,user_id:user.id,username:user.email
   }]);
+
   document.getElementById("postInput").value="";
   document.getElementById("imageInput").value="";
-}
+};
 
-async function toggleLike(postId){
-  if(!currentUser) return alert("Login first");
-  const { data }=await supabase.from("likes")
-    .select("*")
-    .eq("post_id",postId)
-    .eq("user_id",currentUser.id)
-    .maybeSingle();
-  if(data){
-    await supabase.from("likes").update({active:!data.active}).eq("id",data.id);
-  }else{
-    await supabase.from("likes").insert([{post_id:postId,user_id:currentUser.id,active:true}]);
-  }
-}
+/* ================= RENDER ================= */
 
-async function loadPosts(){
-  const { data:posts }=await supabase.from("posts")
-    .select("*")
-    .order("created_at",{ascending:false});
-  document.getElementById("posts").innerHTML="";
-  posts.forEach(post=>renderPost(post));
-}
+function renderPost(post){
 
-async function renderPost(post){
-
-  const { count }=await supabase.from("likes")
-    .select("*",{count:"exact",head:true})
-    .eq("post_id",post.id)
-    .eq("active",true);
-
-  let imagesHTML="";
-  if(post.images){
-    post.images.forEach(url=>{
-      imagesHTML+=`<div class="image-preview"><img src="${url}"></div>`;
-    });
-  }
+  if(document.getElementById("post-"+post.id))return;
 
   const div=document.createElement("div");
-  div.className="post";
+  div.className="card";
   div.id="post-"+post.id;
 
+  let imgs="";
+  if(post.images){
+    post.images.forEach(u=>imgs+=`<img src="${u}">`);
+  }
+
   div.innerHTML=`
-    <b>${post.username}</b>
+    <b>${post.username||"User"}</b>
     <div class="small">${timeAgo(post.created_at)}</div>
-    <div>${post.content||""}</div>
-    ${imagesHTML}
-    ❤️ <span id="like-count-${post.id}">${count||0}</span>
+    <div id="content-${post.id}">${post.content||""}</div>
+    ${imgs}
     <br>
-    <button onclick="toggleLike('${post.id}')">Like</button>
+    <button class="like-btn" id="like-${post.id}">Like</button>
+    <span id="like-count-${post.id}">0</span>
     <div id="comments-${post.id}"></div>
-    <textarea id="comment-input-${post.id}" class="comment-input" placeholder="Write comment..."></textarea>
-    <button onclick="addComment('${post.id}')">Comment</button>
+    <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
+    <button onclick="addComment('${post.id}')">Send</button>
   `;
 
-  document.getElementById("posts").appendChild(div);
+  document.getElementById("feed").prepend(div);
+
+  initLike(post.id);
   loadComments(post.id);
+}
+
+/* ================= LIKE (NO FULL RELOAD) ================= */
+
+async function initLike(postId){
+
+  const btn=document.getElementById("like-"+postId);
+
+  const {count}=await supabase.from("likes")
+    .select("*",{count:"exact",head:true})
+    .eq("post_id",postId)
+    .eq("active",true);
+
+  document.getElementById("like-count-"+postId).innerText=count||0;
+
+  btn.onclick=async()=>{
+    if(!user)return alert("Login");
+    const {data}=await supabase.from("likes")
+      .select("*")
+      .eq("post_id",postId)
+      .eq("user_id",user.id)
+      .maybeSingle();
+
+    if(data){
+      await supabase.from("likes")
+        .update({active:!data.active})
+        .eq("id",data.id);
+    }else{
+      await supabase.from("likes")
+        .insert([{post_id:postId,user_id:user.id,active:true}]);
+    }
+  }
 }
 
 /* ================= COMMENTS ================= */
 
-async function addComment(postId){
-  if(!currentUser) return alert("Login first");
+window.addComment=async function(postId){
+  if(!user)return alert("Login");
   const input=document.getElementById("comment-input-"+postId);
-  const text=input.value;
-  if(!text) return;
+  if(!input.value)return;
   await supabase.from("comments").insert([{
-    post_id:postId,
-    user_id:currentUser.id,
-    username:currentUser.email,
-    content:text
+    post_id:postId,user_id:user.id,
+    username:user.email,content:input.value
   }]);
   input.value="";
 }
 
-async function deleteComment(commentId){
-  await supabase.from("comments").delete().eq("id",commentId);
-}
-
 async function loadComments(postId){
-  const { data }=await supabase.from("comments")
+  const {data}=await supabase.from("comments")
     .select("*")
     .eq("post_id",postId)
     .order("created_at",{ascending:true});
-
-  const container=document.getElementById("comments-"+postId);
-  container.innerHTML="";
+  const box=document.getElementById("comments-"+postId);
+  box.innerHTML="";
   data.forEach(c=>{
-    const timeText=c.updated_at && c.updated_at!==c.created_at
-      ? "Edited • "+timeAgo(c.updated_at)
-      : timeAgo(c.created_at);
-
-    container.innerHTML+=`
+    box.innerHTML+=`
       <div class="comment-box">
         <b>${c.username}</b>
-        <span class="small">${timeText}</span>
-        <br>${c.content}
-        ${
-          currentUser && currentUser.id===c.user_id
-          ? `<br><button onclick="deleteComment('${c.id}')">Delete</button>`
-          : ""
-        }
+        <span class="small">${timeAgo(c.created_at)}</span>
+        <div>${c.content}</div>
       </div>
     `;
-  });
+  })
 }
 
 /* ================= REALTIME ================= */
 
 function subscribeRealtime(){
-  supabase.channel("all-channel")
-    .on("postgres_changes",{event:"*",schema:"public",table:"posts"},()=>loadPosts())
-    .on("postgres_changes",{event:"*",schema:"public",table:"likes"},()=>loadPosts())
-    .on("postgres_changes",{event:"*",schema:"public",table:"comments"},()=>{
-      document.querySelectorAll(".post").forEach(post=>{
-        const postId=post.id.replace("post-","");
-        loadComments(postId);
-      });
-    })
-    .subscribe();
+
+  supabase.channel("posts")
+    .on("postgres_changes",
+      {event:"INSERT",schema:"public",table:"posts"},
+      p=>renderPost(p.new)
+    ).subscribe();
+
+  supabase.channel("likes")
+    .on("postgres_changes",
+      {event:"*",schema:"public",table:"likes"},
+      async p=>{
+        const postId=p.new?.post_id||p.old?.post_id;
+        const {count}=await supabase.from("likes")
+          .select("*",{count:"exact",head:true})
+          .eq("post_id",postId)
+          .eq("active",true);
+        const el=document.getElementById("like-count-"+postId);
+        if(el)el.innerText=count||0;
+      }
+    ).subscribe();
+
+  supabase.channel("comments")
+    .on("postgres_changes",
+      {event:"*",schema:"public",table:"comments"},
+      p=>{
+        const postId=p.new?.post_id||p.old?.post_id;
+        if(postId)loadComments(postId);
+      }
+    ).subscribe();
 }
 
-/* ================= DARK ================= */
+/* ================= LOAD INITIAL ================= */
 
-function toggleDark(){
-  document.body.classList.toggle("dark");
+async function loadInitialPosts(){
+  const {data}=await supabase.from("posts")
+    .select("*")
+    .order("created_at",{ascending:false});
+  data.forEach(renderPost);
 }
 
-window.toggleLike=toggleLike;
-window.addComment=addComment;
-window.deleteComment=deleteComment;
+/* ================= DARK MODE ================= */
 
-document.getElementById("darkBtn").onclick=toggleDark;
-document.getElementById("loginBtn").onclick=login;
-document.getElementById("logoutBtn").onclick=logout;
-document.getElementById("postBtn").onclick=createPost;
+document.getElementById("darkBtn").onclick=
+()=>document.body.classList.toggle("dark");
 
 init();
 
