@@ -26,24 +26,12 @@ button{
  font-size:13px;
 }
 .primary{background:#4f46e5;color:white;}
-.danger{background:#ef4444;color:white;}
 .like{background:#10b981;color:white;}
 textarea{
  width:100%;
  padding:8px;
  border-radius:8px;
  margin-top:5px;
-}
-.image-scroll{
- display:flex;
- overflow-x:auto;
- gap:8px;
- margin-top:10px;
-}
-.image-scroll img{
- height:200px;
- border-radius:12px;
- object-fit:cover;
 }
 </style>
 </head>
@@ -60,13 +48,10 @@ textarea{
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
-<input type="file" id="imageInput" multiple accept="image/*">
 <button id="postBtn" class="primary">Post</button>
 </div>
 
 <div id="feed"></div>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -75,7 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 const supabase = window.supabase.createClient(
   "https://dgehzagvyrxbnnvgsiff.supabase.co",
-  "sb_publishable_YOUR_KEY_HERE"
+  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
 let user = null;
@@ -135,7 +120,8 @@ async function renderPost(post){
   div.innerHTML=`
     <b>${post.username || "User"}</b>
     <div>${post.content || ""}</div>
-    <button id="like-${post.id}" 
+    <button class="like"
+      id="like-${post.id}"
       onclick="toggleLike('${post.id}')">
       ${userLiked ? "Unlike" : "Like"} (${count || 0})
     </button>
@@ -162,14 +148,12 @@ window.toggleLike = async (postId) => {
     .eq("user_id", user.id);
 
   if(data.length>0){
-    // Unlike
     await supabase
       .from("likes")
       .delete()
       .eq("post_id", postId)
       .eq("user_id", user.id);
   }else{
-    // Like
     await supabase
       .from("likes")
       .insert([{post_id:postId, user_id:user.id}]);
@@ -197,13 +181,11 @@ function subscribeRealtime(){
       const btn = document.getElementById("like-"+postId);
       if(!btn) return;
 
-      // fresh count
       const { count } = await supabase
         .from("likes")
         .select("*",{count:"exact", head:true})
         .eq("post_id", postId);
 
-      // check current user state
       let userLiked=false;
 
       if(user){
@@ -226,5 +208,6 @@ function subscribeRealtime(){
 
 });
 </script>
+
 </body>
 </html>
