@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App Final</title>
+<title>Ultimate Social App vFinal Stable</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;}
@@ -10,15 +10,17 @@ body{font-family:system-ui;background:#f3f4f6;padding:20px;}
 button{padding:6px 10px;border:none;border-radius:8px;cursor:pointer;margin:4px 4px 0 0;font-size:13px;}
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
+.like{background:#10b981;color:white;}
 textarea{width:100%;padding:8px;border-radius:8px;margin-top:5px;}
 .image-scroll{display:flex;overflow-x:auto;gap:8px;margin-top:10px;}
 .image-scroll img{max-height:220px;border-radius:10px;}
 .comment{margin-top:6px;font-size:13px;}
+.small{font-size:12px;color:gray;}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App Final</h2>
+<h2>🔥 Social App Stable</h2>
 
 <div>
 <span id="userEmail"></span>
@@ -35,7 +37,7 @@ textarea{width:100%;padding:8px;border-radius:8px;margin-top:5px;}
 
 <div id="feed"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded",()=>{
@@ -47,8 +49,24 @@ const supabase = window.supabase.createClient(
 
 let user=null;
 
-/* ================= AUTH ================= */
+/* ================= TIME FORMAT ================= */
+function timeAgo(date){
+ const seconds=Math.floor((new Date()-new Date(date))/1000);
+ const intervals=[
+  {label:"y",sec:31536000},
+  {label:"mo",sec:2592000},
+  {label:"d",sec:86400},
+  {label:"h",sec:3600},
+  {label:"m",sec:60}
+ ];
+ for(const i of intervals){
+  const count=Math.floor(seconds/i.sec);
+  if(count>0)return count+i.label+" ago";
+ }
+ return "just now";
+}
 
+/* ================= AUTH ================= */
 async function init(){
  const {data}=await supabase.auth.getUser();
  user=data.user;
@@ -69,97 +87,53 @@ function updateUI(){
 }
 
 googleBtn.onclick=()=>supabase.auth.signInWithOAuth({provider:"google"});
-
-guestBtn.onclick=async()=>{
- const {data}=await supabase.auth.signInAnonymously();
- user=data.user;
- updateUI();
-};
-
-logoutBtn.onclick=async()=>{
- await supabase.auth.signOut();
- location.reload();
-};
+guestBtn.onclick=()=>supabase.auth.signInAnonymously();
+logoutBtn.onclick=async()=>{await supabase.auth.signOut();location.reload();};
 
 /* ================= CREATE POST ================= */
-
 postBtn.onclick=async()=>{
  if(!user)return alert("Login first");
 
  const content=postInput.value.trim();
  const files=imageInput.files;
-
- if(!content && files.length===0){
-  alert("Post cannot be empty");
-  return;
- }
+ if(!content && files.length===0)return alert("Post empty");
 
  let paths=[];
-
  for(const f of files){
   const filename=Date.now()+"-"+Math.random()+".jpg";
   await supabase.storage.from("post-images").upload(filename,f);
-  paths.push("post-images/"+filename);
+  paths.push(filename);
  }
 
- const {error}=await supabase.from("posts")
+ await supabase.from("posts")
   .insert([{content,images:paths,user_id:user.id,username:user.email}]);
-
- if(error){
-   console.log("Insert error:",error);
-   alert("Insert failed");
- }
 
  postInput.value="";
  imageInput.value="";
 };
 
 /* ================= LOAD POSTS ================= */
-
 async function loadPosts(){
- feed.innerHTML="";
- const {data,error}=await supabase
+ const {data}=await supabase
   .from("posts")
   .select("*")
   .order("created_at",{ascending:false});
-
- if(error){
-  console.log("Load error:",error);
-  return;
- }
-
+ feed.innerHTML="";
  data?.forEach(renderPost);
 }
 
-/* ================= RENDER ================= */
-
-function renderPost(post){
+/* ================= RENDER POST ================= */
+async function renderPost(post){
 
  if(document.getElementById("post-"+post.id))return;
 
  let imagesHTML="";
-
- if(post.images && post.images.length){
-
+ if(post.images?.length){
   imagesHTML=`<div class="image-scroll">`;
-
-  post.images.forEach(path=>{
-
-    let finalUrl="";
-
-    if(path.startsWith("http")){
-      finalUrl=path;
-    } else {
-      const filename=path.replace("post-images/","");
-      const {data}=supabase.storage
-        .from("post-images")
-        .getPublicUrl(filename);
-      finalUrl=data.publicUrl;
-    }
-
-    imagesHTML+=`<img src="${finalUrl}">`;
+  post.images.forEach(file=>{
+   const {data}=supabase.storage.from("post-images").getPublicUrl(file);
+   imagesHTML+=`<img src="${data.publicUrl}">`;
   });
-
   imagesHTML+=`</div>`;
  }
 
@@ -167,20 +141,28 @@ function renderPost(post){
  div.className="card";
  div.id="post-"+post.id;
 
+ const liked=await isLiked(post.id);
+ const likeCount=await countLikes(post.id);
+
  div.innerHTML=`
-  <b>${post.username}</b>
-  <div>${post.content||""}</div>
-  ${imagesHTML}
+ <b>${post.username||"User"}</b>
+ <div class="small">${timeAgo(post.created_at)}</div>
+ <div>${post.content||""}</div>
+ ${imagesHTML}
 
-  ${
-   user && String(user.id)===String(post.user_id)
-   ? `<button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
-   : ""
-  }
+ <div>
+  <button class="like" onclick="toggleLike('${post.id}')">
+   ${liked?"Unlike":"Like"} (${likeCount})
+  </button>
 
-  <div id="comments-${post.id}"></div>
-  <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
-  <button onclick="addComment('${post.id}')">Send</button>
+  ${user && user.id===post.user_id ?
+   `<button class="danger" onclick="deletePost('${post.id}')">Delete</button>`
+   :""}
+ </div>
+
+ <div id="comments-${post.id}"></div>
+ <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
+ <button onclick="addComment('${post.id}')">Send</button>
  `;
 
  feed.appendChild(div);
@@ -188,43 +170,62 @@ function renderPost(post){
 }
 
 /* ================= DELETE POST ================= */
+window.deletePost=async(id)=>{
 
-window.deletePost=async id=>{
-
- const {data,error}=await supabase
+ const {data}=await supabase
   .from("posts")
   .select("images")
   .eq("id",id)
   .single();
 
- if(error){
-   console.log("Select before delete error:",error);
-   return;
+ if(data?.images?.length){
+  await supabase.storage
+   .from("post-images")
+   .remove(data.images);
  }
 
- if(data?.images){
-   for(const path of data.images){
-     if(!path.startsWith("http")){
-       const filename=path.replace("post-images/","");
-       await supabase.storage.from("post-images").remove([filename]);
-     }
-   }
+ await supabase.from("posts").delete().eq("id",id);
+
+ document.getElementById("post-"+id)?.remove();
+};
+
+/* ================= LIKE SYSTEM ================= */
+async function isLiked(postId){
+ if(!user)return false;
+ const {data}=await supabase.from("likes")
+  .select("*")
+  .eq("post_id",postId)
+  .eq("user_id",user.id);
+ return data.length>0;
+}
+
+async function countLikes(postId){
+ const {count}=await supabase.from("likes")
+  .select("*",{count:"exact",head:true})
+  .eq("post_id",postId);
+ return count||0;
+}
+
+window.toggleLike=async(postId)=>{
+ if(!user)return;
+
+ const liked=await isLiked(postId);
+
+ if(liked){
+  await supabase.from("likes")
+   .delete()
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+ }else{
+  await supabase.from("likes")
+   .insert([{post_id:postId,user_id:user.id}]);
  }
 
- const {error:delError}=await supabase
-  .from("posts")
-  .delete()
-  .eq("id",id);
-
- if(delError){
-   console.log("Delete error:",delError);
-   alert("Delete failed (RLS issue)");
- }
+ loadPosts();
 };
 
 /* ================= COMMENTS ================= */
-
-window.addComment=async postId=>{
+window.addComment=async(postId)=>{
  const input=document.getElementById("comment-input-"+postId);
  if(!input.value)return;
 
@@ -247,14 +248,24 @@ async function loadComments(postId){
  data?.forEach(c=>{
   box.innerHTML+=`
    <div class="comment">
-    <b>${c.username}</b>: ${c.content}
+    <b>${c.username}</b> ${timeAgo(c.created_at)} :
+    ${c.content}
+    ${
+     user && user.id===c.user_id
+     ? `<button onclick="deleteComment('${c.id}','${postId}')">❌</button>`
+     : ""
+    }
    </div>
   `;
  });
 }
 
-/* ================= REALTIME ================= */
+window.deleteComment=async(id,postId)=>{
+ await supabase.from("comments").delete().eq("id",id);
+ loadComments(postId);
+};
 
+/* ================= REALTIME ================= */
 function subscribeRealtime(){
  supabase.channel("posts")
   .on("postgres_changes",{event:"*",schema:"public",table:"posts"},
@@ -263,8 +274,8 @@ function subscribeRealtime(){
 
  supabase.channel("comments")
   .on("postgres_changes",{event:"*",schema:"public",table:"comments"},
-   p=>{
-    const id=p.new?.post_id||p.old?.post_id;
+   payload=>{
+    const id=payload.new?.post_id||payload.old?.post_id;
     if(id)loadComments(id);
    })
   .subscribe();
