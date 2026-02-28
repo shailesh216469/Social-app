@@ -2,32 +2,39 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Ultimate Social App v3.5</title>
+<title>Ultimate Social App v3.6</title>
 
 <style>
 body{font-family:system-ui;background:#f3f4f6;padding:20px;transition:.3s;}
 .dark{background:#0f0f0f;color:white;}
 .card{background:white;padding:16px;border-radius:14px;margin-top:18px;box-shadow:0 3px 15px rgba(0,0,0,.06);}
 .dark .card{background:#1c1c1c;}
-button{padding:6px 10px;border:none;border-radius:8px;cursor:pointer;margin-right:5px;margin-top:5px;font-size:13px;}
+button{padding:6px 10px;border:none;border-radius:8px;cursor:pointer;margin:4px 4px 0 0;font-size:13px;}
 .primary{background:#4f46e5;color:white;}
 .danger{background:#ef4444;color:white;}
 textarea{width:100%;padding:8px;border-radius:10px;margin-top:5px;font-size:14px;}
 .comment-box{margin-top:8px;padding-left:8px;border-left:2px solid #ddd;font-size:13px;}
-.image-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px;}
-.image-grid img{width:100%;height:110px;object-fit:cover;border-radius:8px;}
-.overlay{
- position:absolute;top:0;left:0;width:100%;height:100%;
- background:rgba(0,0,0,.5);
- color:white;display:flex;align-items:center;
- justify-content:center;font-size:20px;border-radius:8px;
-}
 .small{font-size:12px;color:#777;}
+.slider{position:relative;overflow:hidden;margin-top:8px;}
+.slider-track{display:flex;transition:.3s;}
+.slider img{max-height:220px;border-radius:10px;margin-right:8px;}
+.arrow{
+ position:absolute;top:45%;background:rgba(0,0,0,.5);
+ color:white;border-radius:50%;width:30px;height:30px;
+ display:flex;align-items:center;justify-content:center;
+ cursor:pointer;
+}
+.left{left:5px;}
+.right{right:5px;}
+.dots{text-align:center;margin-top:6px;}
+.dot{display:inline-block;width:6px;height:6px;
+ border-radius:50%;background:#ccc;margin:0 3px;}
+.active-dot{background:#4f46e5;}
 </style>
 </head>
 <body>
 
-<h2>🔥 Ultimate Social App v3.5</h2>
+<h2>🔥 Ultimate Social App v3.6</h2>
 
 <div>
 <span id="userEmail"></span>
@@ -63,12 +70,10 @@ async function init(){
  const {data}=await supabase.auth.getUser();
  user=data.user;
  updateUserUI();
-
  supabase.auth.onAuthStateChange((e,s)=>{
   user=s?.user||null;
   updateUserUI();
  });
-
  await loadPosts();
  subscribeRealtime();
 }
@@ -102,17 +107,16 @@ postBtn.onclick=async()=>{
   return;
  }
 
- let urls=[];
+ let paths=[];
 
  for(const f of files){
-  const name=Date.now()+"-"+Math.random()+".jpg";
-  await supabase.storage.from("post-images").upload(name,f);
-  const {data}=supabase.storage.from("post-images").getPublicUrl(name);
-  urls.push(data.publicUrl);
+  const filename=Date.now()+"-"+Math.random()+".jpg";
+  await supabase.storage.from("post-images").upload(filename,f);
+  paths.push("post-images/"+filename);
  }
 
  await supabase.from("posts")
-  .insert([{content,images:urls,user_id:user.id,username:user.email}]);
+  .insert([{content,images:paths,user_id:user.id,username:user.email}]);
 
  postInput.value="";
  imageInput.value="";
@@ -134,27 +138,23 @@ function renderPost(post){
 
  if(document.getElementById("post-"+post.id))return;
 
- let grid="";
+ let slider="";
  if(post.images && post.images.length){
-  const visible=post.images.slice(0,3);
-  const extra=post.images.length-3;
 
-  grid=`<div class="image-grid">`;
+  slider=`<div class="slider" id="slider-${post.id}">
+   <div class="slider-track" id="track-${post.id}">`;
 
-  visible.forEach((u,i)=>{
-   if(i===2 && extra>0){
-    grid+=`
-     <div style="position:relative">
-      <img src="${u}">
-      <div class="overlay">+${extra}</div>
-     </div>
-    `;
-   }else{
-    grid+=`<img src="${u}">`;
-   }
+  post.images.forEach(path=>{
+   const {data}=supabase.storage.from("post-images")
+     .getPublicUrl(path.replace("post-images/",""));
+   slider+=`<img src="${data.publicUrl}">`;
   });
 
-  grid+=`</div>`;
+  slider+=`</div>
+   <div class="arrow left" onclick="slide('${post.id}',-1)">‹</div>
+   <div class="arrow right" onclick="slide('${post.id}',1)">›</div>
+   <div class="dots" id="dots-${post.id}"></div>
+  </div>`;
  }
 
  const div=document.createElement("div");
@@ -172,7 +172,7 @@ function renderPost(post){
    : ""
   }
 
-  ${grid}
+  ${slider}
 
   <div id="comments-${post.id}"></div>
   <textarea id="comment-input-${post.id}" placeholder="Comment..."></textarea>
@@ -181,7 +181,16 @@ function renderPost(post){
 
  feed.appendChild(div);
  loadComments(post.id);
+ initSlider(post.id,post.images?.length||0);
 }
+
+/* ================= SLIDER ================= */
+
+window.slide=(id,dir)=>{
+ const track=document.getElementById("track-"+id);
+ const width=track.children[0].offsetWidth+8;
+ track.scrollBy({left:dir*width,behavior:"smooth"});
+};
 
 /* ================= DELETE POST ================= */
 
@@ -192,57 +201,13 @@ window.deletePost=async id=>{
   .single();
 
  if(data?.images){
-  for(const url of data.images){
-   const path=url.split("/post-images/")[1];
-   if(path){
-    await supabase.storage.from("post-images").remove([path]);
-   }
+  for(const path of data.images){
+   const filename=path.replace("post-images/","");
+   await supabase.storage.from("post-images").remove([filename]);
   }
  }
 
  await supabase.from("posts").delete().eq("id",id);
-};
-
-/* ================= EDIT POST ================= */
-
-window.editPost=async id=>{
- const {data}=await supabase.from("posts")
-  .select("*")
-  .eq("id",id)
-  .single();
-
- const post=document.getElementById("post-"+id);
-
- let currentImages="";
- data.images?.forEach(u=>{
-  currentImages+=`<img src="${u}" style="width:70px;height:70px;object-fit:cover;margin:4px;border-radius:6px;">`;
- });
-
- post.innerHTML=`
-  <textarea id="edit-text-${id}">${data.content}</textarea>
-  <div>${currentImages}</div>
-  <input type="file" id="edit-img-${id}" multiple>
-  <button onclick="savePost('${id}')">Save</button>
-  <button onclick="loadPosts()">Cancel</button>
- `;
-};
-
-window.savePost=async id=>{
- const text=document.getElementById("edit-text-"+id).value;
- const files=document.getElementById("edit-img-"+id).files;
-
- let urls=[];
-
- for(const f of files){
-  const name=Date.now()+"-"+Math.random()+".jpg";
-  await supabase.storage.from("post-images").upload(name,f);
-  const {data}=supabase.storage.from("post-images").getPublicUrl(name);
-  urls.push(data.publicUrl);
- }
-
- await supabase.from("posts")
-  .update({content:text,images:urls})
-  .eq("id",id);
 };
 
 /* ================= COMMENTS ================= */
@@ -266,7 +231,6 @@ async function loadComments(postId){
 
  const box=document.getElementById("comments-"+postId);
  box.innerHTML="";
-
  data?.forEach(c=>{
   box.innerHTML+=`
    <div class="comment-box" id="comment-${c.id}">
@@ -288,7 +252,6 @@ window.deleteComment=async id=>{
 /* ================= REALTIME ================= */
 
 function subscribeRealtime(){
-
  supabase.channel("posts")
   .on("postgres_changes",{event:"*",schema:"public",table:"posts"},
    ()=>loadPosts())
