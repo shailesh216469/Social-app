@@ -177,7 +177,7 @@ export default function FeedPage() {
     const channel = supabase
       .channel("social-realtime")
 
-      // LIKE EVENTS
+      // LIKE EVENTS (Filtered for optimistic UI)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
@@ -187,6 +187,14 @@ export default function FeedPage() {
               ? payload.old.post_id
               : payload.new.post_id;
 
+          const eventUserId =
+            payload.eventType === "DELETE"
+              ? payload.old.user_id
+              : payload.new.user_id;
+
+          // Ignore my own like/unlike events
+          if (eventUserId === user.id) return;
+
           setPosts((prev) =>
             prev.map((post) => {
               if (post.id !== postId) return post;
@@ -195,10 +203,6 @@ export default function FeedPage() {
                 return {
                   ...post,
                   likeCount: post.likeCount + 1,
-                  likedByMe:
-                    payload.new.user_id === user.id
-                      ? true
-                      : post.likedByMe,
                 };
               }
 
@@ -206,10 +210,6 @@ export default function FeedPage() {
                 return {
                   ...post,
                   likeCount: Math.max(post.likeCount - 1, 0),
-                  likedByMe:
-                    payload.old.user_id === user.id
-                      ? false
-                      : post.likedByMe,
                 };
               }
 
@@ -295,7 +295,7 @@ export default function FeedPage() {
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
 
-    // Instant UI update
+    // Optimistic update
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
