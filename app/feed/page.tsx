@@ -66,7 +66,7 @@ export default function FeedPage() {
         created_at,
         user_id,
         profiles(username),
-        post_likes(user_id),
+        post_likes(id, user_id, post_id),
         comments(
           id,
           content,
@@ -107,43 +107,59 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
-  /* ---------------- REALTIME (STABLE VERSION) ---------------- */
+  /* ---------------- REALTIME (FINAL STABLE VERSION) ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel("likes-stable-channel")
+      .channel("likes-production-channel")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
         async (payload: any) => {
           console.log("Realtime payload:", payload);
 
-          const postId =
-            payload.eventType === "DELETE"
-              ? payload.old?.post_id
-              : payload.new?.post_id;
+          let postId: string | null = null;
 
-          if (!postId) {
-            console.log("No postId found");
-            return;
+          // INSERT
+          if (payload.eventType === "INSERT") {
+            postId = payload.new?.post_id;
           }
 
-          // Always fetch fresh count (no manual increment/decrement)
-          const { data, error } = await supabase
+          // DELETE
+          if (payload.eventType === "DELETE") {
+            const deletedLikeId = payload.old?.id;
+
+            if (!deletedLikeId) return;
+
+            // Try to fetch post_id using deleted row id
+            const { data } = await supabase
+              .from("post_likes")
+              .select("post_id")
+              .eq("id", deletedLikeId)
+              .single();
+
+            if (data?.post_id) {
+              postId = data.post_id;
+            } else {
+              // If row already gone → fallback full refresh
+              await fetchPosts(user);
+              return;
+            }
+          }
+
+          if (!postId) return;
+
+          // Fetch fresh like list
+          const { data: likes } = await supabase
             .from("post_likes")
             .select("user_id")
             .eq("post_id", postId);
 
-          if (error) {
-            console.log("Error fetching likes:", error);
-            return;
-          }
-
-          const totalLikes = data?.length || 0;
+          const totalLikes = likes?.length || 0;
           const likedByMe =
-            data?.some((like) => like.user_id === user.id) || false;
+            likes?.some((like) => like.user_id === user.id) || false;
 
           setPosts((prev) =>
             prev.map((post) =>
@@ -165,7 +181,7 @@ export default function FeedPage() {
     };
   }, [user]);
 
-  /* ---------------- TOGGLE LIKE (NO OPTIMISTIC MATH) ---------------- */
+  /* ---------------- TOGGLE LIKE ---------------- */
 
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
