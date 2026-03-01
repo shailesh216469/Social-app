@@ -10,6 +10,7 @@ export default function FeedPage() {
   const [user, setUser] = useState<any>(null);
   const [content, setContent] = useState("");
   const [posts, setPosts] = useState<any[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const init = async () => {
@@ -21,16 +22,25 @@ export default function FeedPage() {
       }
 
       setUser(data.user);
+
       await fetchPosts(data.user);
+      await fetchPendingRequests(data.user);
     };
 
     init();
   }, [router]);
 
-  const fetchPosts = async (currentUser: any) => {
-    if (!currentUser) return;
+  const fetchPendingRequests = async (currentUser: any) => {
+    const { count } = await supabase
+      .from("friend_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("receiver_id", currentUser.id)
+      .eq("status", "pending");
 
-    // 1️⃣ Get friendships
+    setPendingCount(count || 0);
+  };
+
+  const fetchPosts = async (currentUser: any) => {
     const { data: friendships } = await supabase
       .from("friendships")
       .select("*")
@@ -44,10 +54,8 @@ export default function FeedPage() {
       );
     }
 
-    // Include self
     friendIds.push(currentUser.id);
 
-    // 2️⃣ Fetch posts from friends + self
     const { data } = await supabase
       .from("posts")
       .select(`
@@ -67,15 +75,10 @@ export default function FeedPage() {
   const handleCreatePost = async () => {
     if (!content.trim() || !user) return;
 
-    const { error } = await supabase.from("posts").insert({
+    await supabase.from("posts").insert({
       content,
       user_id: user.id,
     });
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
 
     setContent("");
     fetchPosts(user);
@@ -90,10 +93,17 @@ export default function FeedPage() {
     <div className="min-h-screen p-6 max-w-xl mx-auto">
       <div className="flex justify-between mb-6">
         <h1 className="text-2xl font-bold">Feed</h1>
-        <div className="flex gap-3">
-          <Link href="/friends" className="text-blue-600">
+
+        <div className="flex gap-4 items-center">
+          <Link href="/friends" className="text-blue-600 relative">
             Friends
+            {pendingCount > 0 && (
+              <span className="ml-1 bg-red-600 text-white text-xs px-2 py-1 rounded-full">
+                {pendingCount}
+              </span>
+            )}
           </Link>
+
           <button
             onClick={handleLogout}
             className="bg-black text-white px-4 py-2"
