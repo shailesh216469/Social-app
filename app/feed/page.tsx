@@ -41,6 +41,7 @@ export default function FeedPage() {
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getUser();
+
       if (!data.user) {
         router.push("/login");
         return;
@@ -106,44 +107,39 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
-  /* ---------------- REALTIME (DEBUG MODE) ---------------- */
+  /* ---------------- REALTIME (STABLE VERSION) ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel("likes-debug-channel")
-
+      .channel("likes-stable-channel")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
         async (payload: any) => {
-          console.log("🔥 Realtime payload:", payload);
-          console.log("Event type:", payload.eventType);
+          console.log("Realtime payload:", payload);
 
           const postId =
             payload.eventType === "DELETE"
               ? payload.old?.post_id
               : payload.new?.post_id;
 
-          console.log("Post ID:", postId);
-
           if (!postId) {
-            console.log("❌ No postId found");
+            console.log("No postId found");
             return;
           }
 
+          // Always fetch fresh count (no manual increment/decrement)
           const { data, error } = await supabase
             .from("post_likes")
             .select("user_id")
             .eq("post_id", postId);
 
           if (error) {
-            console.log("❌ Error fetching fresh count:", error);
+            console.log("Error fetching likes:", error);
             return;
           }
-
-          console.log("✅ Fresh like count:", data?.length);
 
           const totalLikes = data?.length || 0;
           const likedByMe =
@@ -162,7 +158,6 @@ export default function FeedPage() {
           );
         }
       )
-
       .subscribe();
 
     return () => {
@@ -170,25 +165,10 @@ export default function FeedPage() {
     };
   }, [user]);
 
-  /* ---------------- OPTIMISTIC LIKE ---------------- */
+  /* ---------------- TOGGLE LIKE (NO OPTIMISTIC MATH) ---------------- */
 
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
-
-    // optimistic update
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              likeCount: liked
-                ? Math.max(post.likeCount - 1, 0)
-                : post.likeCount + 1,
-              likedByMe: !liked,
-            }
-          : post
-      )
-    );
 
     if (liked) {
       await supabase
@@ -202,6 +182,8 @@ export default function FeedPage() {
     }
   };
 
+  /* ---------------- FRIEND REQUEST COUNT ---------------- */
+
   const fetchPendingRequests = async (currentUser: any) => {
     const { count } = await supabase
       .from("friend_requests")
@@ -212,10 +194,14 @@ export default function FeedPage() {
     setPendingCount(count || 0);
   };
 
+  /* ---------------- LOGOUT ---------------- */
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
+
+  /* ---------------- UI ---------------- */
 
   return (
     <div className="min-h-screen p-6 max-w-xl mx-auto">
@@ -226,7 +212,12 @@ export default function FeedPage() {
         />
       )}
 
-      {user && <CreatePost userId={user.id} onPostCreated={() => fetchPosts(user)} />}
+      {user && (
+        <CreatePost
+          userId={user.id}
+          onPostCreated={() => fetchPosts(user)}
+        />
+      )}
 
       {user && <SearchUsers currentUserId={user.id} />}
 
