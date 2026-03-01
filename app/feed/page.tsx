@@ -35,6 +35,8 @@ export default function FeedPage() {
   const [search, setSearch] = useState<string>("");
   const [results, setResults] = useState<any[]>([]);
 
+  /* ---------------- INITIAL LOAD ---------------- */
+
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getUser();
@@ -104,18 +106,32 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
-  /* ---------------- REALTIME COMMENTS ---------------- */
+  /* ---------------- REALTIME (COMMENTS + LIKES) ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel("comments-realtime")
+      .channel("social-realtime")
+
+      // Comment events
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "comments" },
-        () => fetchPosts(user)
+        () => {
+          fetchPosts(user);
+        }
       )
+
+      // Like events
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "post_likes" },
+        () => {
+          fetchPosts(user);
+        }
+      )
+
       .subscribe();
 
     return () => {
@@ -152,8 +168,6 @@ export default function FeedPage() {
         .from("post_likes")
         .insert({ post_id: postId, user_id: user.id });
     }
-
-    fetchPosts(user);
   };
 
   /* ---------------- COMMENTS ---------------- */
@@ -172,6 +186,18 @@ export default function FeedPage() {
     if (!user) return;
 
     await supabase.from("comments").delete().eq("id", commentId);
+  };
+
+  /* ---------------- FRIEND REQUEST BADGE ---------------- */
+
+  const fetchPendingRequests = async (currentUser: any) => {
+    const { count } = await supabase
+      .from("friend_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("receiver_id", currentUser.id)
+      .eq("status", "pending");
+
+    setPendingCount(count || 0);
   };
 
   /* ---------------- SEARCH ---------------- */
@@ -197,18 +223,6 @@ export default function FeedPage() {
     });
 
     alert("Friend request sent!");
-  };
-
-  /* ---------------- FRIEND REQUEST BADGE ---------------- */
-
-  const fetchPendingRequests = async (currentUser: any) => {
-    const { count } = await supabase
-      .from("friend_requests")
-      .select("*", { count: "exact", head: true })
-      .eq("receiver_id", currentUser.id)
-      .eq("status", "pending");
-
-    setPendingCount(count || 0);
   };
 
   /* ---------------- LOGOUT ---------------- */
@@ -343,6 +357,7 @@ export default function FeedPage() {
                       </button>
                     )}
                   </div>
+
                   <p className="text-sm">{comment.content}</p>
                 </div>
               ))}
