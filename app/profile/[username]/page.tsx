@@ -29,6 +29,7 @@ export default function ProfilePage() {
 
       setProfile(data);
 
+      // Load posts
       const { data: userPosts } = await supabase
         .from("posts")
         .select("*")
@@ -37,18 +38,22 @@ export default function ProfilePage() {
 
       if (userPosts) setPosts(userPosts);
 
-      // 🔎 Check if already friends
+      // 🔥 FIXED FRIEND CHECK
       if (user) {
-        const { data: friendship } = await supabase
+        const { data: friendships } = await supabase
           .from("friendships")
           .select("*")
-          .or(
-            `and(user_id_1.eq.${user.id},user_id_2.eq.${data.id}),
-             and(user_id_1.eq.${data.id},user_id_2.eq.${user.id})`
-          )
-          .maybeSingle();
+          .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
 
-        if (friendship) setIsFriend(true);
+        if (friendships) {
+          const match = friendships.some(
+            (f: any) =>
+              (f.user_id_1 === user.id && f.user_id_2 === data.id) ||
+              (f.user_id_1 === data.id && f.user_id_2 === user.id)
+          );
+
+          if (match) setIsFriend(true);
+        }
       }
     };
 
@@ -85,18 +90,23 @@ export default function ProfilePage() {
       return;
     }
 
-    const { data: existingFriendship } = await supabase
+    // Check existing friendship
+    const { data: friendships } = await supabase
       .from("friendships")
       .select("*")
-      .or(
-        `and(user_id_1.eq.${currentUser.id},user_id_2.eq.${profile.id}),
-         and(user_id_1.eq.${profile.id},user_id_2.eq.${currentUser.id})`
-      )
-      .maybeSingle();
+      .or(`user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`);
 
-    if (existingFriendship) {
-      alert("You are already friends");
-      return;
+    if (friendships) {
+      const match = friendships.some(
+        (f: any) =>
+          (f.user_id_1 === currentUser.id && f.user_id_2 === profile.id) ||
+          (f.user_id_1 === profile.id && f.user_id_2 === currentUser.id)
+      );
+
+      if (match) {
+        alert("You are already friends");
+        return;
+      }
     }
 
     const { error } = await supabase.from("friend_requests").insert({
@@ -128,7 +138,7 @@ export default function ProfilePage() {
           </Link>
         )}
 
-        {/* If friends show Unfriend */}
+        {/* If friends → show Unfriend */}
         {currentUser &&
           currentUser.id !== profile.id &&
           isFriend && (
@@ -140,7 +150,7 @@ export default function ProfilePage() {
             </button>
           )}
 
-        {/* If not friends show Add Friend */}
+        {/* If not friends → show Add Friend */}
         {currentUser &&
           currentUser.id !== profile.id &&
           !isFriend && (
