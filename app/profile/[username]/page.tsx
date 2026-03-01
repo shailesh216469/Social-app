@@ -14,6 +14,7 @@ export default function ProfilePage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isFriend, setIsFriend] = useState(false);
   const [requestPending, setRequestPending] = useState(false);
+  const [requestSentByMe, setRequestSentByMe] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -30,7 +31,6 @@ export default function ProfilePage() {
 
       setProfile(data);
 
-      // Load posts
       const { data: userPosts } = await supabase
         .from("posts")
         .select("*")
@@ -39,40 +39,45 @@ export default function ProfilePage() {
 
       if (userPosts) setPosts(userPosts);
 
-      if (user) {
-        // Check friendships
-        const { data: friendships } = await supabase
-          .from("friendships")
-          .select("*")
-          .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
+      if (!user) return;
 
-        if (friendships) {
-          const match = friendships.some(
-            (f: any) =>
-              (f.user_id_1 === user.id && f.user_id_2 === data.id) ||
-              (f.user_id_1 === data.id && f.user_id_2 === user.id)
-          );
+      // Check friendship
+      const { data: friendships } = await supabase
+        .from("friendships")
+        .select("*")
+        .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
 
-          if (match) {
-            setIsFriend(true);
-            return;
-          }
+      if (friendships) {
+        const match = friendships.some(
+          (f: any) =>
+            (f.user_id_1 === user.id && f.user_id_2 === data.id) ||
+            (f.user_id_1 === data.id && f.user_id_2 === user.id)
+        );
+
+        if (match) {
+          setIsFriend(true);
+          return;
         }
+      }
 
-        // 🔥 Check pending friend request
-        const { data: requests } = await supabase
-          .from("friend_requests")
-          .select("*")
-          .eq("status", "pending");
+      // Check pending request
+      const { data: requests } = await supabase
+        .from("friend_requests")
+        .select("*")
+        .eq("status", "pending");
 
-        if (requests) {
-          const pending = requests.some(
-            (r: any) =>
-              (r.sender_id === user.id && r.receiver_id === data.id) ||
-              (r.sender_id === data.id && r.receiver_id === user.id)
-          );
+      if (requests) {
+        const pending = requests.find(
+          (r: any) =>
+            (r.sender_id === user.id && r.receiver_id === data.id) ||
+            (r.sender_id === data.id && r.receiver_id === user.id)
+        );
 
-          if (pending) setRequestPending(true);
+        if (pending) {
+          setRequestPending(true);
+          if (pending.sender_id === user.id) {
+            setRequestSentByMe(true);
+          }
         }
       }
     };
@@ -117,12 +122,27 @@ export default function ProfilePage() {
       status: "pending",
     });
 
-    if (error) {
-      alert(error.message);
-    } else {
-      alert("Friend request sent!");
+    if (!error) {
       setRequestPending(true);
+      setRequestSentByMe(true);
     }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!currentUser) return;
+
+    await supabase
+      .from("friend_requests")
+      .delete()
+      .match({
+        sender_id: currentUser.id,
+        receiver_id: profile.id,
+        status: "pending",
+      });
+
+    alert("Friend request cancelled");
+    setRequestPending(false);
+    setRequestSentByMe(false);
   };
 
   if (!profile) return <p className="p-6">Loading...</p>;
@@ -132,7 +152,6 @@ export default function ProfilePage() {
       <div className="border p-4 mb-6">
         <h1 className="text-2xl font-bold">@{profile.username}</h1>
 
-        {/* Edit own profile */}
         {currentUser && currentUser.id === profile.id && (
           <Link
             href="/edit-profile"
@@ -142,7 +161,7 @@ export default function ProfilePage() {
           </Link>
         )}
 
-        {/* If friends */}
+        {/* Friends */}
         {currentUser &&
           currentUser.id !== profile.id &&
           isFriend && (
@@ -154,20 +173,33 @@ export default function ProfilePage() {
             </button>
           )}
 
-        {/* If request pending */}
+        {/* Pending - Sent by me */}
         {currentUser &&
           currentUser.id !== profile.id &&
-          !isFriend &&
-          requestPending && (
+          requestPending &&
+          requestSentByMe && (
             <button
-              disabled
-              className="mt-3 bg-gray-400 text-white px-4 py-2 rounded cursor-not-allowed"
+              onClick={handleCancelRequest}
+              className="mt-3 bg-yellow-500 text-white px-4 py-2 rounded"
             >
-              Requested
+              Cancel Request
             </button>
           )}
 
-        {/* If no relationship */}
+        {/* Pending - Received by me */}
+        {currentUser &&
+          currentUser.id !== profile.id &&
+          requestPending &&
+          !requestSentByMe && (
+            <button
+              disabled
+              className="mt-3 bg-gray-400 text-white px-4 py-2 rounded"
+            >
+              Request Received
+            </button>
+          )}
+
+        {/* No relationship */}
         {currentUser &&
           currentUser.id !== profile.id &&
           !isFriend &&
