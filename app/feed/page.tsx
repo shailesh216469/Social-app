@@ -36,11 +36,7 @@ export default function FeedPage() {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
 
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  /* ---------------- INITIAL LOAD ---------------- */
+  /* ---------------- INIT ---------------- */
 
   useEffect(() => {
     const init = async () => {
@@ -51,7 +47,7 @@ export default function FeedPage() {
       }
 
       setUser(data.user);
-      await fetchPosts(data.user, false);
+      await fetchPosts(data.user);
       await fetchPendingRequests(data.user);
     };
 
@@ -60,23 +56,8 @@ export default function FeedPage() {
 
   /* ---------------- FETCH POSTS ---------------- */
 
-  const fetchPosts = async (currentUser: any, append: boolean) => {
-    const { data: friendships } = await supabase
-      .from("friendships")
-      .select("*")
-      .or(`user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`);
-
-    let friendIds: string[] = [];
-
-    if (friendships) {
-      friendIds = friendships.map((f: any) =>
-        f.user_id_1 === currentUser.id ? f.user_id_2 : f.user_id_1
-      );
-    }
-
-    friendIds.push(currentUser.id);
-
-    let query = supabase
+  const fetchPosts = async (currentUser: any) => {
+    const { data } = await supabase
       .from("posts")
       .select(`
         id,
@@ -93,20 +74,10 @@ export default function FeedPage() {
           profiles(username)
         )
       `)
-      .in("user_id", friendIds)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
 
-    if (cursor && append) {
-      query = query.lt("created_at", cursor);
-    }
-
-    const { data } = await query;
-
-    if (!data || data.length === 0) {
-      setHasMore(false);
-      return;
-    }
+    if (!data) return;
 
     const formatted: PostType[] = data.map((post: any) => ({
       id: post.id,
@@ -132,69 +103,47 @@ export default function FeedPage() {
         ) || false,
     }));
 
-    if (append) {
-      setPosts((prev) => [...prev, ...formatted]);
-    } else {
-      setPosts(formatted);
-    }
-
-    const lastPost = formatted[formatted.length - 1];
-    setCursor(lastPost.created_at);
-
-    if (data.length < PAGE_SIZE) {
-      setHasMore(false);
-    }
+    setPosts(formatted);
   };
 
-  /* ---------------- INFINITE SCROLL ---------------- */
-
-  const loadMore = async () => {
-    if (!user || !hasMore || loadingMore) return;
-    setLoadingMore(true);
-    await fetchPosts(user, true);
-    setLoadingMore(false);
-  };
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (
-        window.innerHeight + window.scrollY >=
-        document.body.offsetHeight - 200
-      ) {
-        loadMore();
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [cursor, hasMore, loadingMore, user]);
-
-  /* ---------------- REALTIME ---------------- */
+  /* ---------------- REALTIME (DEBUG MODE) ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel("social-realtime")
+      .channel("likes-debug-channel")
 
-      // 🔥 LIKE EVENTS (Authoritative DB Sync)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
         async (payload: any) => {
+          console.log("🔥 Realtime payload:", payload);
+          console.log("Event type:", payload.eventType);
+
           const postId =
             payload.eventType === "DELETE"
               ? payload.old?.post_id
               : payload.new?.post_id;
 
-          if (!postId) return;
+          console.log("Post ID:", postId);
+
+          if (!postId) {
+            console.log("❌ No postId found");
+            return;
+          }
 
           const { data, error } = await supabase
             .from("post_likes")
             .select("user_id")
             .eq("post_id", postId);
 
-          if (error) return;
+          if (error) {
+            console.log("❌ Error fetching fresh count:", error);
+            return;
+          }
+
+          console.log("✅ Fresh like count:", data?.length);
 
           const totalLikes = data?.length || 0;
           const likedByMe =
@@ -214,72 +163,6 @@ export default function FeedPage() {
         }
       )
 
-      // 🔥 COMMENT EVENTS
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "comments" },
-        async (payload: any) => {
-          const postId =
-            payload.eventType === "DELETE"
-              ? payload.old?.post_id
-              : payload.new?.post_id;
-
-          if (!postId) return;
-
-          if (payload.eventType === "INSERT") {
-            const { data } = await supabase
-              .from("comments")
-              .select(`
-                id,
-                content,
-                user_id,
-                created_at,
-                profiles(username)
-              `)
-              .eq("id", payload.new.id)
-              .single();
-
-            if (!data) return;
-
-            const normalized: CommentType = {
-              id: data.id,
-              content: data.content,
-              user_id: data.user_id,
-              created_at: data.created_at,
-              profiles: Array.isArray(data.profiles)
-                ? data.profiles[0] || null
-                : data.profiles,
-            };
-
-            setPosts((prev) =>
-              prev.map((post) =>
-                post.id === postId
-                  ? {
-                      ...post,
-                      comments: [...post.comments, normalized],
-                    }
-                  : post
-              )
-            );
-          }
-
-          if (payload.eventType === "DELETE") {
-            setPosts((prev) =>
-              prev.map((post) =>
-                post.id === postId
-                  ? {
-                      ...post,
-                      comments: post.comments.filter(
-                        (c) => c.id !== payload.old.id
-                      ),
-                    }
-                  : post
-              )
-            );
-          }
-        }
-      )
-
       .subscribe();
 
     return () => {
@@ -292,7 +175,7 @@ export default function FeedPage() {
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
 
-    // Optimistic UI
+    // optimistic update
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -319,21 +202,6 @@ export default function FeedPage() {
     }
   };
 
-  const addComment = async (postId: string, text: string) => {
-    if (!user || !text.trim()) return;
-
-    await supabase.from("comments").insert({
-      post_id: postId,
-      user_id: user.id,
-      content: text,
-    });
-  };
-
-  const deleteComment = async (commentId: string) => {
-    if (!user) return;
-    await supabase.from("comments").delete().eq("id", commentId);
-  };
-
   const fetchPendingRequests = async (currentUser: any) => {
     const { count } = await supabase
       .from("friend_requests")
@@ -358,16 +226,7 @@ export default function FeedPage() {
         />
       )}
 
-      {user && (
-        <CreatePost
-          userId={user.id}
-          onPostCreated={() => {
-            setCursor(null);
-            setHasMore(true);
-            fetchPosts(user, false);
-          }}
-        />
-      )}
+      {user && <CreatePost userId={user.id} onPostCreated={() => fetchPosts(user)} />}
 
       {user && <SearchUsers currentUserId={user.id} />}
 
@@ -378,23 +237,11 @@ export default function FeedPage() {
             post={post}
             currentUserId={user.id}
             onLikeToggle={toggleLike}
-            onAddComment={addComment}
-            onDeleteComment={deleteComment}
+            onAddComment={() => {}}
+            onDeleteComment={() => {}}
           />
         ))}
       </div>
-
-      {loadingMore && (
-        <p className="text-center mt-4 text-gray-500">
-          Loading more...
-        </p>
-      )}
-
-      {!hasMore && (
-        <p className="text-center mt-4 text-gray-400">
-          No more posts
-        </p>
-      )}
     </div>
   );
 }
