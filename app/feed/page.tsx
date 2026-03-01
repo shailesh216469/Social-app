@@ -22,10 +22,9 @@ type PostType = {
   created_at: string;
   user_id: string;
   profiles: { username: string } | null;
-  post_likes: { user_id: string }[];
-  comments: CommentType[];
   likeCount: number;
   likedByMe: boolean;
+  comments: CommentType[];
 };
 
 const PAGE_SIZE = 5;
@@ -59,12 +58,9 @@ export default function FeedPage() {
     init();
   }, [router]);
 
-  /* ---------------- FETCH POSTS (CURSOR BASED) ---------------- */
+  /* ---------------- FETCH POSTS (CURSOR) ---------------- */
 
-  const fetchPosts = async (
-    currentUser: any,
-    append: boolean
-  ) => {
+  const fetchPosts = async (currentUser: any, append: boolean) => {
     const { data: friendships } = await supabase
       .from("friendships")
       .select("*")
@@ -113,7 +109,11 @@ export default function FeedPage() {
     }
 
     const formatted: PostType[] = data.map((post: any) => ({
-      ...post,
+      id: post.id,
+      content: post.content,
+      created_at: post.created_at,
+      user_id: post.user_id,
+      profiles: post.profiles,
       comments: post.comments || [],
       likeCount: post.post_likes?.length || 0,
       likedByMe:
@@ -162,36 +162,113 @@ export default function FeedPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, [cursor, hasMore, loadingMore, user]);
 
-  /* ---------------- REALTIME ---------------- */
+  /* ---------------- OPTIMIZED REALTIME ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
       .channel("social-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "comments" },
-        () => refreshFeed()
-      )
+
+      // LIKE EVENTS
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
-        () => refreshFeed()
+        (payload: any) => {
+          const postId =
+            payload.eventType === "DELETE"
+              ? payload.old.post_id
+              : payload.new.post_id;
+
+          setPosts((prev) =>
+            prev.map((post) => {
+              if (post.id !== postId) return post;
+
+              if (payload.eventType === "INSERT") {
+                return {
+                  ...post,
+                  likeCount: post.likeCount + 1,
+                  likedByMe:
+                    payload.new.user_id === user.id
+                      ? true
+                      : post.likedByMe,
+                };
+              }
+
+              if (payload.eventType === "DELETE") {
+                return {
+                  ...post,
+                  likeCount: Math.max(post.likeCount - 1, 0),
+                  likedByMe:
+                    payload.old.user_id === user.id
+                      ? false
+                      : post.likedByMe,
+                };
+              }
+
+              return post;
+            })
+          );
+        }
       )
+
+      // COMMENT EVENTS
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "comments" },
+        async (payload: any) => {
+          const postId =
+            payload.eventType === "DELETE"
+              ? payload.old.post_id
+              : payload.new.post_id;
+
+          if (payload.eventType === "INSERT") {
+            const { data } = await supabase
+              .from("comments")
+              .select(`
+                id,
+                content,
+                user_id,
+                created_at,
+                profiles(username)
+              `)
+              .eq("id", payload.new.id)
+              .single();
+
+            if (!data) return;
+
+            setPosts((prev) =>
+              prev.map((post) =>
+                post.id === postId
+                  ? { ...post, comments: [...post.comments, data] }
+                  : post
+              )
+            );
+          }
+
+          if (payload.eventType === "DELETE") {
+            setPosts((prev) =>
+              prev.map((post) =>
+                post.id === postId
+                  ? {
+                      ...post,
+                      comments: post.comments.filter(
+                        (c) => c.id !== payload.old.id
+                      ),
+                    }
+                  : post
+              )
+            );
+          }
+        }
+      )
+
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [user]);
-
-  const refreshFeed = async () => {
-    if (!user) return;
-    setCursor(null);
-    setHasMore(true);
-    await fetchPosts(user, false);
-  };
 
   /* ---------------- ACTIONS ---------------- */
 
@@ -255,7 +332,11 @@ export default function FeedPage() {
       {user && (
         <CreatePost
           userId={user.id}
-          onPostCreated={refreshFeed}
+          onPostCreated={() => {
+            setCursor(null);
+            setHasMore(true);
+            fetchPosts(user, false);
+          }}
         />
       )}
 
