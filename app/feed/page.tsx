@@ -28,8 +28,15 @@ export default function FeedPage() {
   const fetchPosts = async () => {
     const { data } = await supabase
       .from("posts")
-      .select("*")
-      .order("created_at", { ascending: false });
+.select(`
+  id,
+  content,
+  created_at,
+  profiles (
+    username
+  )
+`)
+.order("created_at", { ascending: false });
 
     if (data) setPosts(data);
   };
