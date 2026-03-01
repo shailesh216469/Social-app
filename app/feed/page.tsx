@@ -96,11 +96,14 @@ export default function FeedPage() {
       <div className="space-y-4">
         {posts.map((post) => (
           <div key={post.id} className="border p-4">
-            <p>{post.content}</p>
-            <small className="text-gray-500">
-              {new Date(post.created_at).toLocaleString()}
-            </small>
-          </div>
+  <p className="font-bold">
+    {post.profiles?.username}
+  </p>
+  <p>{post.content}</p>
+  <small className="text-gray-500">
+    {new Date(post.created_at).toLocaleString()}
+  </small>
+</div>
         ))}
       </div>
     </div>
