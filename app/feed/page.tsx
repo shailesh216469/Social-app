@@ -5,12 +5,31 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
+type PostType = {
+  id: string;
+  content: string;
+  created_at: string;
+  profiles: { username: string } | null;
+  post_likes: { user_id: string }[];
+  comments: CommentType[];
+  likeCount: number;
+  likedByMe: boolean;
+};
+
+type CommentType = {
+  id: string;
+  content: string;
+  user_id: string;
+  created_at: string;
+  profiles: { username: string } | null;
+};
+
 export default function FeedPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
-  const [search, setSearch] = useState("");
+  const [posts, setPosts] = useState<PostType[]>([]);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [search, setSearch] = useState<string>("");
   const [results, setResults] = useState<any[]>([]);
 
   useEffect(() => {
@@ -76,12 +95,14 @@ export default function FeedPage() {
 
     if (!data) return;
 
-    const formatted = data.map((post: any) => ({
+    const formatted: PostType[] = data.map((post: any) => ({
       ...post,
-      likeCount: post.post_likes.length,
-      likedByMe: post.post_likes.some(
-        (like: any) => like.user_id === currentUser.id
-      ),
+      comments: post.comments || [],
+      likeCount: post.post_likes?.length || 0,
+      likedByMe:
+        post.post_likes?.some(
+          (like: any) => like.user_id === currentUser.id
+        ) || false,
     }));
 
     setPosts(formatted);
@@ -104,13 +125,13 @@ export default function FeedPage() {
     fetchPosts(user);
   };
 
-  const addComment = async (postId: string, content: string) => {
-    if (!user || !content.trim()) return;
+  const addComment = async (postId: string, text: string) => {
+    if (!user || !text.trim()) return;
 
     await supabase.from("comments").insert({
       post_id: postId,
       user_id: user.id,
-      content,
+      content: text,
     });
 
     fetchPosts(user);
@@ -119,11 +140,7 @@ export default function FeedPage() {
   const deleteComment = async (commentId: string) => {
     if (!user) return;
 
-    await supabase
-      .from("comments")
-      .delete()
-      .eq("id", commentId);
-
+    await supabase.from("comments").delete().eq("id", commentId);
     fetchPosts(user);
   };
 
@@ -247,7 +264,7 @@ export default function FeedPage() {
 
             {/* COMMENTS */}
             <div className="mt-4 space-y-3">
-              {post.comments.map((comment: any) => (
+              {post.comments?.map((comment) => (
                 <div key={comment.id} className="bg-gray-100 p-2 rounded">
                   <div className="flex justify-between">
                     <span className="font-bold text-sm">
@@ -268,9 +285,10 @@ export default function FeedPage() {
                 </div>
               ))}
 
-              {/* Add Comment */}
               <AddCommentInput
-                onSubmit={(text) => addComment(post.id, text)}
+                onSubmit={(text: string) =>
+                  addComment(post.id, text)
+                }
               />
             </div>
 
@@ -284,9 +302,13 @@ export default function FeedPage() {
   );
 }
 
-/* Small Comment Input Component */
-function AddCommentInput({ onSubmit }: any) {
-  const [text, setText] = useState("");
+/* Comment Input Component */
+function AddCommentInput({
+  onSubmit,
+}: {
+  onSubmit: (text: string) => void;
+}) {
+  const [text, setText] = useState<string>("");
 
   return (
     <div className="flex gap-2">
@@ -299,6 +321,7 @@ function AddCommentInput({ onSubmit }: any) {
       />
       <button
         onClick={() => {
+          if (!text.trim()) return;
           onSubmit(text);
           setText("");
         }}
