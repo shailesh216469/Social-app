@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -41,6 +42,12 @@ export default function ProfilePage() {
     <div className="min-h-screen p-6 max-w-xl mx-auto">
       <div className="border p-4 mb-6">
         <h1 className="text-2xl font-bold">@{profile.username}</h1>
+<Link
+  href="/edit-profile"
+  className="inline-block mt-2 text-sm text-blue-600"
+>
+  Edit Profile
+</Link>
         <p>{profile.full_name}</p>
         <p className="text-gray-500">{profile.bio}</p>
       </div>
