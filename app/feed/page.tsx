@@ -62,22 +62,29 @@ export default function FeedPage() {
         content,
         created_at,
         profiles(username),
-        post_likes(user_id)
+        post_likes(user_id),
+        comments(
+          id,
+          content,
+          user_id,
+          created_at,
+          profiles(username)
+        )
       `)
       .in("user_id", friendIds)
       .order("created_at", { ascending: false });
 
-    if (data) {
-      const formatted = data.map((post: any) => ({
-        ...post,
-        likeCount: post.post_likes.length,
-        likedByMe: post.post_likes.some(
-          (like: any) => like.user_id === currentUser.id
-        ),
-      }));
+    if (!data) return;
 
-      setPosts(formatted);
-    }
+    const formatted = data.map((post: any) => ({
+      ...post,
+      likeCount: post.post_likes.length,
+      likedByMe: post.post_likes.some(
+        (like: any) => like.user_id === currentUser.id
+      ),
+    }));
+
+    setPosts(formatted);
   };
 
   const toggleLike = async (postId: string, liked: boolean) => {
@@ -93,6 +100,29 @@ export default function FeedPage() {
         .from("post_likes")
         .insert({ post_id: postId, user_id: user.id });
     }
+
+    fetchPosts(user);
+  };
+
+  const addComment = async (postId: string, content: string) => {
+    if (!user || !content.trim()) return;
+
+    await supabase.from("comments").insert({
+      post_id: postId,
+      user_id: user.id,
+      content,
+    });
+
+    fetchPosts(user);
+  };
+
+  const deleteComment = async (commentId: string) => {
+    if (!user) return;
+
+    await supabase
+      .from("comments")
+      .delete()
+      .eq("id", commentId);
 
     fetchPosts(user);
   };
@@ -128,6 +158,7 @@ export default function FeedPage() {
   return (
     <div className="min-h-screen p-6 max-w-xl mx-auto">
 
+      {/* HEADER */}
       <div className="flex justify-between mb-6">
         <h1 className="text-2xl font-bold">Feed</h1>
 
@@ -150,7 +181,7 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* 🔍 SEARCH SECTION */}
+      {/* SEARCH */}
       <div className="border p-4 mb-6">
         <input
           type="text"
@@ -183,9 +214,10 @@ export default function FeedPage() {
       </div>
 
       {/* POSTS */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         {posts.map((post) => (
           <div key={post.id} className="border p-4">
+
             <Link
               href={`/profile/${post.profiles?.username}`}
               className="font-bold text-blue-600"
@@ -195,6 +227,7 @@ export default function FeedPage() {
 
             <p className="mt-2">{post.content}</p>
 
+            {/* LIKE */}
             <div className="flex items-center gap-4 mt-3">
               <button
                 onClick={() => toggleLike(post.id, post.likedByMe)}
@@ -212,13 +245,67 @@ export default function FeedPage() {
               </span>
             </div>
 
+            {/* COMMENTS */}
+            <div className="mt-4 space-y-3">
+              {post.comments.map((comment: any) => (
+                <div key={comment.id} className="bg-gray-100 p-2 rounded">
+                  <div className="flex justify-between">
+                    <span className="font-bold text-sm">
+                      {comment.profiles?.username}
+                    </span>
+
+                    {user?.id === comment.user_id && (
+                      <button
+                        onClick={() => deleteComment(comment.id)}
+                        className="text-red-500 text-xs"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-sm">{comment.content}</p>
+                </div>
+              ))}
+
+              {/* Add Comment */}
+              <AddCommentInput
+                onSubmit={(text) => addComment(post.id, text)}
+              />
+            </div>
+
             <small className="text-gray-500 block mt-2">
               {new Date(post.created_at).toLocaleString()}
             </small>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
 
+/* Small Comment Input Component */
+function AddCommentInput({ onSubmit }: any) {
+  const [text, setText] = useState("");
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="text"
+        placeholder="Write a comment..."
+        className="border p-2 flex-1 text-sm"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button
+        onClick={() => {
+          onSubmit(text);
+          setText("");
+        }}
+        className="bg-blue-600 text-white px-3 text-sm"
+      >
+        Post
+      </button>
     </div>
   );
 }
