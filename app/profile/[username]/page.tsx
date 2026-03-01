@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const [posts, setPosts] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isFriend, setIsFriend] = useState(false);
+  const [requestPending, setRequestPending] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -38,8 +39,8 @@ export default function ProfilePage() {
 
       if (userPosts) setPosts(userPosts);
 
-      // 🔥 Correct friendship check
       if (user) {
+        // Check friendships
         const { data: friendships } = await supabase
           .from("friendships")
           .select("*")
@@ -52,7 +53,26 @@ export default function ProfilePage() {
               (f.user_id_1 === data.id && f.user_id_2 === user.id)
           );
 
-          if (match) setIsFriend(true);
+          if (match) {
+            setIsFriend(true);
+            return;
+          }
+        }
+
+        // 🔥 Check pending friend request
+        const { data: requests } = await supabase
+          .from("friend_requests")
+          .select("*")
+          .eq("status", "pending");
+
+        if (requests) {
+          const pending = requests.some(
+            (r: any) =>
+              (r.sender_id === user.id && r.receiver_id === data.id) ||
+              (r.sender_id === data.id && r.receiver_id === user.id)
+          );
+
+          if (pending) setRequestPending(true);
         }
       }
     };
@@ -60,11 +80,9 @@ export default function ProfilePage() {
     fetchData();
   }, [username]);
 
-  // ✅ SAFE UNFRIEND (NO LOGIC TREE ERROR)
   const handleUnfriend = async () => {
     if (!currentUser) return;
 
-    // Try delete A -> B
     await supabase
       .from("friendships")
       .delete()
@@ -73,7 +91,6 @@ export default function ProfilePage() {
         user_id_2: profile.id,
       });
 
-    // Try delete B -> A
     await supabase
       .from("friendships")
       .delete()
@@ -86,46 +103,25 @@ export default function ProfilePage() {
     setIsFriend(false);
   };
 
-  // ✅ SAFE ADD FRIEND
   const handleAddFriend = async () => {
-    if (!currentUser) {
-      alert("Login first");
-      return;
-    }
+    if (!currentUser) return;
 
     if (currentUser.id === profile.id) {
-      alert("You cannot add yourself");
+      alert("Cannot add yourself");
       return;
-    }
-
-    // Check if already friends
-    const { data: friendships } = await supabase
-      .from("friendships")
-      .select("*")
-      .or(`user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`);
-
-    if (friendships) {
-      const match = friendships.some(
-        (f: any) =>
-          (f.user_id_1 === currentUser.id && f.user_id_2 === profile.id) ||
-          (f.user_id_1 === profile.id && f.user_id_2 === currentUser.id)
-      );
-
-      if (match) {
-        alert("You are already friends");
-        return;
-      }
     }
 
     const { error } = await supabase.from("friend_requests").insert({
       sender_id: currentUser.id,
       receiver_id: profile.id,
+      status: "pending",
     });
 
     if (error) {
       alert(error.message);
     } else {
       alert("Friend request sent!");
+      setRequestPending(true);
     }
   };
 
@@ -146,7 +142,7 @@ export default function ProfilePage() {
           </Link>
         )}
 
-        {/* Show Unfriend if friends */}
+        {/* If friends */}
         {currentUser &&
           currentUser.id !== profile.id &&
           isFriend && (
@@ -158,10 +154,24 @@ export default function ProfilePage() {
             </button>
           )}
 
-        {/* Show Add Friend if not friends */}
+        {/* If request pending */}
         {currentUser &&
           currentUser.id !== profile.id &&
-          !isFriend && (
+          !isFriend &&
+          requestPending && (
+            <button
+              disabled
+              className="mt-3 bg-gray-400 text-white px-4 py-2 rounded cursor-not-allowed"
+            >
+              Requested
+            </button>
+          )}
+
+        {/* If no relationship */}
+        {currentUser &&
+          currentUser.id !== profile.id &&
+          !isFriend &&
+          !requestPending && (
             <button
               onClick={handleAddFriend}
               className="mt-3 bg-blue-600 text-white px-4 py-2 rounded"
