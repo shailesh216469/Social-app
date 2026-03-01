@@ -5,17 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-type PostType = {
-  id: string;
-  content: string;
-  created_at: string;
-  profiles: { username: string } | null;
-  post_likes: { user_id: string }[];
-  comments: CommentType[];
-  likeCount: number;
-  likedByMe: boolean;
-};
-
 type CommentType = {
   id: string;
   content: string;
@@ -24,10 +13,24 @@ type CommentType = {
   profiles: { username: string } | null;
 };
 
+type PostType = {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  profiles: { username: string } | null;
+  post_likes: { user_id: string }[];
+  comments: CommentType[];
+  likeCount: number;
+  likedByMe: boolean;
+};
+
 export default function FeedPage() {
   const router = useRouter();
+
   const [user, setUser] = useState<any>(null);
   const [posts, setPosts] = useState<PostType[]>([]);
+  const [newPost, setNewPost] = useState<string>("");
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [search, setSearch] = useState<string>("");
   const [results, setResults] = useState<any[]>([]);
@@ -48,15 +51,7 @@ export default function FeedPage() {
     init();
   }, [router]);
 
-  const fetchPendingRequests = async (currentUser: any) => {
-    const { count } = await supabase
-      .from("friend_requests")
-      .select("*", { count: "exact", head: true })
-      .eq("receiver_id", currentUser.id)
-      .eq("status", "pending");
-
-    setPendingCount(count || 0);
-  };
+  /* ---------------- FETCH POSTS ---------------- */
 
   const fetchPosts = async (currentUser: any) => {
     const { data: friendships } = await supabase
@@ -80,6 +75,7 @@ export default function FeedPage() {
         id,
         content,
         created_at,
+        user_id,
         profiles(username),
         post_likes(user_id),
         comments(
@@ -108,6 +104,41 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
+  /* ---------------- REALTIME COMMENTS ---------------- */
+
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("comments-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "comments" },
+        () => fetchPosts(user)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  /* ---------------- CREATE POST ---------------- */
+
+  const createPost = async () => {
+    if (!user || !newPost.trim()) return;
+
+    await supabase.from("posts").insert({
+      content: newPost,
+      user_id: user.id,
+    });
+
+    setNewPost("");
+    fetchPosts(user);
+  };
+
+  /* ---------------- LIKE ---------------- */
+
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
 
@@ -125,6 +156,8 @@ export default function FeedPage() {
     fetchPosts(user);
   };
 
+  /* ---------------- COMMENTS ---------------- */
+
   const addComment = async (postId: string, text: string) => {
     if (!user || !text.trim()) return;
 
@@ -133,16 +166,15 @@ export default function FeedPage() {
       user_id: user.id,
       content: text,
     });
-
-    fetchPosts(user);
   };
 
   const deleteComment = async (commentId: string) => {
     if (!user) return;
 
     await supabase.from("comments").delete().eq("id", commentId);
-    fetchPosts(user);
   };
+
+  /* ---------------- SEARCH ---------------- */
 
   const handleSearch = async () => {
     if (!search.trim()) return;
@@ -167,10 +199,26 @@ export default function FeedPage() {
     alert("Friend request sent!");
   };
 
+  /* ---------------- FRIEND REQUEST BADGE ---------------- */
+
+  const fetchPendingRequests = async (currentUser: any) => {
+    const { count } = await supabase
+      .from("friend_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("receiver_id", currentUser.id)
+      .eq("status", "pending");
+
+    setPendingCount(count || 0);
+  };
+
+  /* ---------------- LOGOUT ---------------- */
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
+
+  /* ---------------- UI ---------------- */
 
   return (
     <div className="min-h-screen p-6 max-w-xl mx-auto">
@@ -198,6 +246,22 @@ export default function FeedPage() {
         </div>
       </div>
 
+      {/* CREATE POST */}
+      <div className="border p-4 mb-6">
+        <textarea
+          placeholder="What's on your mind?"
+          className="w-full border p-2 mb-2"
+          value={newPost}
+          onChange={(e) => setNewPost(e.target.value)}
+        />
+        <button
+          onClick={createPost}
+          className="bg-black text-white px-4 py-2"
+        >
+          Post
+        </button>
+      </div>
+
       {/* SEARCH */}
       <div className="border p-4 mb-6">
         <input
@@ -207,7 +271,6 @@ export default function FeedPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-
         <button
           onClick={handleSearch}
           className="bg-blue-600 text-white px-4 py-2"
@@ -280,7 +343,6 @@ export default function FeedPage() {
                       </button>
                     )}
                   </div>
-
                   <p className="text-sm">{comment.content}</p>
                 </div>
               ))}
@@ -302,7 +364,7 @@ export default function FeedPage() {
   );
 }
 
-/* Comment Input Component */
+/* COMMENT INPUT COMPONENT */
 function AddCommentInput({
   onSubmit,
 }: {
