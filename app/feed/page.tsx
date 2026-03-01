@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -96,9 +96,12 @@ export default function FeedPage() {
       <div className="space-y-4">
         {posts.map((post) => (
           <div key={post.id} className="border p-4">
-  <p className="font-bold">
-    {post.profiles?.username}
-  </p>
+  <Link
+  href={`/profile/${post.profiles?.username}`}
+  className="font-bold text-blue-600"
+>
+  {post.profiles?.username}
+</Link>
   <p>{post.content}</p>
   <small className="text-gray-500">
     {new Date(post.created_at).toLocaleString()}
