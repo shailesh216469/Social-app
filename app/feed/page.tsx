@@ -37,7 +37,7 @@ export default function FeedPage() {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [pendingCount, setPendingCount] = useState<number>(0);
 
-  const [page, setPage] = useState<number>(0);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
@@ -52,19 +52,18 @@ export default function FeedPage() {
       }
 
       setUser(data.user);
-      await fetchPosts(data.user, 0, false);
+      await fetchPosts(data.user, false);
       await fetchPendingRequests(data.user);
     };
 
     init();
   }, [router]);
 
-  /* ---------------- FETCH POSTS WITH PAGINATION ---------------- */
+  /* ---------------- FETCH POSTS (CURSOR BASED) ---------------- */
 
   const fetchPosts = async (
     currentUser: any,
-    pageNumber: number = 0,
-    append: boolean = false
+    append: boolean
   ) => {
     const { data: friendships } = await supabase
       .from("friendships")
@@ -81,10 +80,7 @@ export default function FeedPage() {
 
     friendIds.push(currentUser.id);
 
-    const from = pageNumber * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-
-    const { data } = await supabase
+    let query = supabase
       .from("posts")
       .select(`
         id,
@@ -103,9 +99,18 @@ export default function FeedPage() {
       `)
       .in("user_id", friendIds)
       .order("created_at", { ascending: false })
-      .range(from, to);
+      .limit(PAGE_SIZE);
 
-    if (!data) return;
+    if (cursor && append) {
+      query = query.lt("created_at", cursor);
+    }
+
+    const { data } = await query;
+
+    if (!data || data.length === 0) {
+      setHasMore(false);
+      return;
+    }
 
     const formatted: PostType[] = data.map((post: any) => ({
       ...post,
@@ -117,14 +122,17 @@ export default function FeedPage() {
         ) || false,
     }));
 
-    if (data.length < PAGE_SIZE) {
-      setHasMore(false);
-    }
-
     if (append) {
       setPosts((prev) => [...prev, ...formatted]);
     } else {
       setPosts(formatted);
+    }
+
+    const lastPost = formatted[formatted.length - 1];
+    setCursor(lastPost.created_at);
+
+    if (data.length < PAGE_SIZE) {
+      setHasMore(false);
     }
   };
 
@@ -134,11 +142,7 @@ export default function FeedPage() {
     if (!user || !hasMore || loadingMore) return;
 
     setLoadingMore(true);
-    const nextPage = page + 1;
-
-    await fetchPosts(user, nextPage, true);
-
-    setPage(nextPage);
+    await fetchPosts(user, true);
     setLoadingMore(false);
   };
 
@@ -155,11 +159,8 @@ export default function FeedPage() {
     };
 
     window.addEventListener("scroll", handleScroll);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, [page, hasMore, loadingMore, user]);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [cursor, hasMore, loadingMore, user]);
 
   /* ---------------- REALTIME ---------------- */
 
@@ -171,12 +172,12 @@ export default function FeedPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "comments" },
-        () => fetchPosts(user, 0, false)
+        () => refreshFeed()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
-        () => fetchPosts(user, 0, false)
+        () => refreshFeed()
       )
       .subscribe();
 
@@ -184,6 +185,13 @@ export default function FeedPage() {
       supabase.removeChannel(channel);
     };
   }, [user]);
+
+  const refreshFeed = async () => {
+    if (!user) return;
+    setCursor(null);
+    setHasMore(true);
+    await fetchPosts(user, false);
+  };
 
   /* ---------------- ACTIONS ---------------- */
 
@@ -214,7 +222,6 @@ export default function FeedPage() {
 
   const deleteComment = async (commentId: string) => {
     if (!user) return;
-
     await supabase.from("comments").delete().eq("id", commentId);
   };
 
@@ -248,28 +255,23 @@ export default function FeedPage() {
       {user && (
         <CreatePost
           userId={user.id}
-          onPostCreated={() => {
-            setPage(0);
-            setHasMore(true);
-            fetchPosts(user, 0, false);
-          }}
+          onPostCreated={refreshFeed}
         />
       )}
 
       {user && <SearchUsers currentUserId={user.id} />}
 
       <div className="space-y-6">
-        {user &&
-          posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              currentUserId={user.id}
-              onLikeToggle={toggleLike}
-              onAddComment={addComment}
-              onDeleteComment={deleteComment}
-            />
-          ))}
+        {posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            currentUserId={user.id}
+            onLikeToggle={toggleLike}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
+          />
+        ))}
       </div>
 
       {loadingMore && (
