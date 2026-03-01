@@ -33,19 +33,37 @@ export default function FriendsPage() {
     fetchRequests();
   }, []);
 
-  const handleAccept = async (requestId: string) => {
-    const { error } = await supabase
-      .from("friend_requests")
-      .update({ status: "accepted" })
-      .eq("id", requestId);
+  const handleAccept = async (request: any) => {
+  // 1️⃣ Update request status
+  const { error: updateError } = await supabase
+    .from("friend_requests")
+    .update({ status: "accepted" })
+    .eq("id", request.id);
 
-    if (error) {
-      alert(error.message);
-    } else {
-      alert("Friend request accepted!");
-      window.location.reload();
-    }
-  };
+  if (updateError) {
+    alert(updateError.message);
+    return;
+  }
+
+  // 2️⃣ Create friendship record
+  const user1 = request.sender_id;
+  const user2 = currentUser.id;
+
+  const { error: insertError } = await supabase
+    .from("friendships")
+    .insert({
+      user_id_1: user1,
+      user_id_2: user2,
+    });
+
+  if (insertError) {
+    alert(insertError.message);
+    return;
+  }
+
+  alert("Friend request accepted!");
+  window.location.reload();
+};
 
   return (
     <div className="min-h-screen p-6 max-w-xl mx-auto">
@@ -57,7 +75,7 @@ export default function FriendsPage() {
         <div key={req.id} className="border p-4 mb-4 flex justify-between items-center">
           <p>{req.profiles?.username}</p>
           <button
-            onClick={() => handleAccept(req.id)}
+            onClick={() => handleAccept(req)}
             className="bg-green-600 text-white px-3 py-1 rounded"
           >
             Accept
