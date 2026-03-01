@@ -177,11 +177,11 @@ export default function FeedPage() {
     const channel = supabase
       .channel("social-realtime")
 
-      // LIKE EVENTS (Filtered for optimistic UI)
+      // 🔥 STABLE LIKE HANDLER (No Drift)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
-        (payload: any) => {
+        async (payload: any) => {
           const postId =
             payload.eventType === "DELETE"
               ? payload.old.post_id
@@ -192,29 +192,28 @@ export default function FeedPage() {
               ? payload.old.user_id
               : payload.new.user_id;
 
-          // Ignore my own like/unlike events
+          // Ignore own events (optimistic already handled)
           if (eventUserId === user.id) return;
 
+          const { data } = await supabase
+            .from("post_likes")
+            .select("user_id")
+            .eq("post_id", postId);
+
+          const totalLikes = data?.length || 0;
+          const likedByMe =
+            data?.some((like) => like.user_id === user.id) || false;
+
           setPosts((prev) =>
-            prev.map((post) => {
-              if (post.id !== postId) return post;
-
-              if (payload.eventType === "INSERT") {
-                return {
-                  ...post,
-                  likeCount: post.likeCount + 1,
-                };
-              }
-
-              if (payload.eventType === "DELETE") {
-                return {
-                  ...post,
-                  likeCount: Math.max(post.likeCount - 1, 0),
-                };
-              }
-
-              return post;
-            })
+            prev.map((post) =>
+              post.id === postId
+                ? {
+                    ...post,
+                    likeCount: totalLikes,
+                    likedByMe,
+                  }
+                : post
+            )
           );
         }
       )
@@ -351,8 +350,6 @@ export default function FeedPage() {
     await supabase.auth.signOut();
     router.push("/login");
   };
-
-  /* ---------------- UI ---------------- */
 
   return (
     <div className="min-h-screen p-6 max-w-xl mx-auto">
