@@ -14,6 +14,7 @@ type CommentType = {
   user_id: string;
   created_at: string;
   profiles: { username: string } | null;
+  optimistic?: boolean;
 };
 
 type PostType = {
@@ -40,17 +41,14 @@ export default function FeedPage() {
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getUser();
-
       if (!data.user) {
         router.push("/login");
         return;
       }
-
       setUser(data.user);
       await fetchPosts(data.user);
       await fetchPendingRequests(data.user);
     };
-
     init();
   }, [router]);
 
@@ -115,11 +113,7 @@ export default function FeedPage() {
       .channel("likes-channel")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "post_likes",
-        },
+        { event: "*", schema: "public", table: "post_likes" },
         async () => {
           await fetchPosts(user);
         }
@@ -131,76 +125,69 @@ export default function FeedPage() {
     };
   }, [user]);
 
-  /* ---------------- REALTIME COMMENTS ---------------- */
+  /* ---------------- REALTIME COMMENTS (OPTIMIZED) ---------------- */
 
   useEffect(() => {
-  if (!user) return;
+    if (!user) return;
 
-  const channel = supabase
-    .channel("comments-optimized-channel")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "comments",
-      },
-      async (payload: any) => {
-        const postId =
-          payload.eventType === "DELETE"
-            ? payload.old?.post_id
-            : payload.new?.post_id;
+    const channel = supabase
+      .channel("comments-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "comments" },
+        async (payload: any) => {
+          const postId =
+            payload.eventType === "DELETE"
+              ? payload.old?.post_id
+              : payload.new?.post_id;
 
-        if (!postId) return;
+          if (!postId) return;
 
-        // Fetch only comments of this post
-        const { data } = await supabase
-          .from("comments")
-          .select(`
-            id,
-            content,
-            user_id,
-            created_at,
-            profiles(username)
-          `)
-          .eq("post_id", postId)
-          .order("created_at", { ascending: true });
+          const { data } = await supabase
+            .from("comments")
+            .select(`
+              id,
+              content,
+              user_id,
+              created_at,
+              profiles(username)
+            `)
+            .eq("post_id", postId)
+            .order("created_at", { ascending: true });
 
-        if (!data) return;
+          if (!data) return;
 
-        const normalized = data.map((c: any) => ({
-          id: c.id,
-          content: c.content,
-          user_id: c.user_id,
-          created_at: c.created_at,
-          profiles: Array.isArray(c.profiles)
-            ? c.profiles[0] || null
-            : c.profiles,
-        }));
+          const normalized: CommentType[] = data.map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            user_id: c.user_id,
+            created_at: c.created_at,
+            profiles: Array.isArray(c.profiles)
+              ? c.profiles[0] || null
+              : c.profiles,
+          }));
 
-        // Update only affected post
-        setPosts((prev) =>
-          prev.map((post) =>
-            post.id === postId
-              ? { ...post, comments: normalized }
-              : post
-          )
-        );
-      }
-    )
-    .subscribe();
+          setPosts((prev) =>
+            prev.map((post) =>
+              post.id === postId
+                ? { ...post, comments: normalized }
+                : post
+            )
+          );
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [user]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   /* ---------------- TOGGLE LIKE ---------------- */
 
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
 
-    // Optimistic UI
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -228,27 +215,87 @@ export default function FeedPage() {
     }
   };
 
-  /* ---------------- ADD COMMENT ---------------- */
+  /* ---------------- OPTIMISTIC COMMENT ---------------- */
 
   const addComment = async (postId: string, text: string) => {
     if (!user || !text.trim()) return;
 
-    await supabase.from("comments").insert({
-      post_id: postId,
-      user_id: user.id,
-      content: text,
-    });
-  };
+    const tempId = "temp-" + Date.now();
 
-  /* ---------------- DELETE COMMENT ---------------- */
+    const optimisticComment: CommentType = {
+      id: tempId,
+      content: text,
+      user_id: user.id,
+      created_at: new Date().toISOString(),
+      profiles: { username: user.email || "You" },
+      optimistic: true,
+    };
+
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? { ...post, comments: [...post.comments, optimisticComment] }
+          : post
+      )
+    );
+
+    const { data, error } = await supabase
+      .from("comments")
+      .insert({
+        post_id: postId,
+        user_id: user.id,
+        content: text,
+      })
+      .select(`
+        id,
+        content,
+        user_id,
+        created_at,
+        profiles(username)
+      `)
+      .single();
+
+    if (error || !data) {
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                comments: post.comments.filter((c) => c.id !== tempId),
+              }
+            : post
+        )
+      );
+      return;
+    }
+
+    const normalized: CommentType = {
+      id: data.id,
+      content: data.content,
+      user_id: data.user_id,
+      created_at: data.created_at,
+      profiles: Array.isArray(data.profiles)
+        ? data.profiles[0] || null
+        : data.profiles,
+    };
+
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              comments: post.comments.map((c) =>
+                c.id === tempId ? normalized : c
+              ),
+            }
+          : post
+      )
+    );
+  };
 
   const deleteComment = async (commentId: string) => {
-    if (!user) return;
-
     await supabase.from("comments").delete().eq("id", commentId);
   };
-
-  /* ---------------- FRIEND REQUEST COUNT ---------------- */
 
   const fetchPendingRequests = async (currentUser: any) => {
     const { count } = await supabase
@@ -259,8 +306,6 @@ export default function FeedPage() {
 
     setPendingCount(count || 0);
   };
-
-  /* ---------------- LOGOUT ---------------- */
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
