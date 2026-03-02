@@ -8,7 +8,6 @@ type NotificationType = {
   type: string;
   actor_username: string;
   is_read: boolean;
-  post_id: string | null;
 };
 
 export default function FeedHeader({
@@ -27,7 +26,6 @@ export default function FeedHeader({
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: any) => {
       if (
@@ -64,7 +62,7 @@ export default function FeedHeader({
           <button
             onClick={() => {
               setOpen(!open);
-              if (!open) onMarkRead(); // mark all as read
+              if (!open) onMarkRead(); // mark all as read when opening
             }}
             className="relative text-xl"
           >
@@ -93,14 +91,12 @@ export default function FeedHeader({
                   }`}
                   onClick={() => onMarkRead(notif.id)}
                 >
-                  <p>
-                    <span className="font-semibold">
-                      {notif.actor_username}
-                    </span>{" "}
-                    {notif.type === "like"
-                      ? "liked your post ❤️"
-                      : "commented on your post 💬"}
-                  </p>
+                  <span className="font-semibold">
+                    {notif.actor_username}
+                  </span>{" "}
+                  {notif.type === "like"
+                    ? "liked your post ❤️"
+                    : "commented on your post 💬"}
                 </div>
               ))}
             </div>
