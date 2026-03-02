@@ -9,6 +9,7 @@ type CommentType = {
   user_id: string;
   created_at: string;
   profiles: { username: string } | null;
+  optimistic?: boolean;
 };
 
 type PostType = {
@@ -38,25 +39,27 @@ export default function PostCard({
   const [commentText, setCommentText] = useState<string>("");
 
   return (
-    <div className="border p-4">
+    <div className="border p-4 rounded-lg shadow-sm bg-white">
 
+      {/* USERNAME */}
       <Link
         href={`/profile/${post.profiles?.username}`}
-        className="font-bold text-blue-600"
+        className="font-bold text-blue-600 hover:underline"
       >
         {post.profiles?.username}
       </Link>
 
+      {/* POST CONTENT */}
       <p className="mt-2">{post.content}</p>
 
-      {/* LIKE */}
+      {/* LIKE SECTION */}
       <div className="flex items-center gap-4 mt-3">
         <button
           onClick={() => onLikeToggle(post.id, post.likedByMe)}
-          className={`px-3 py-1 rounded ${
+          className={`px-3 py-1 rounded transition ${
             post.likedByMe
               ? "bg-red-600 text-white"
-              : "bg-gray-200"
+              : "bg-gray-200 hover:bg-gray-300"
           }`}
         >
           {post.likedByMe ? "Unlike ❤️" : "Like 🤍"}
@@ -69,24 +72,37 @@ export default function PostCard({
 
       {/* COMMENTS */}
       <div className="mt-4 space-y-3">
+
         {post.comments?.map((comment) => (
-          <div key={comment.id} className="bg-gray-100 p-2 rounded">
-            <div className="flex justify-between">
+          <div
+            key={comment.id}
+            className={`p-2 rounded bg-gray-100 transition ${
+              comment.optimistic ? "opacity-50 italic" : ""
+            }`}
+          >
+            <div className="flex justify-between items-center">
               <span className="font-bold text-sm">
                 {comment.profiles?.username}
               </span>
 
-              {currentUserId === comment.user_id && (
-                <button
-                  onClick={() => onDeleteComment(comment.id)}
-                  className="text-red-500 text-xs"
-                >
-                  Delete
-                </button>
-              )}
+              {!comment.optimistic &&
+                currentUserId === comment.user_id && (
+                  <button
+                    onClick={() => onDeleteComment(comment.id)}
+                    className="text-red-500 text-xs hover:underline"
+                  >
+                    Delete
+                  </button>
+                )}
             </div>
 
             <p className="text-sm">{comment.content}</p>
+
+            {comment.optimistic && (
+              <p className="text-xs text-gray-400 mt-1">
+                Sending...
+              </p>
+            )}
           </div>
         ))}
 
@@ -95,7 +111,7 @@ export default function PostCard({
           <input
             type="text"
             placeholder="Write a comment..."
-            className="border p-2 flex-1 text-sm"
+            className="border p-2 flex-1 text-sm rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
           />
@@ -106,14 +122,15 @@ export default function PostCard({
               onAddComment(post.id, commentText);
               setCommentText("");
             }}
-            className="bg-blue-600 text-white px-3 text-sm"
+            className="bg-blue-600 text-white px-3 text-sm rounded hover:bg-blue-700 transition"
           >
             Post
           </button>
         </div>
       </div>
 
-      <small className="text-gray-500 block mt-2">
+      {/* TIME */}
+      <small className="text-gray-500 block mt-3">
         {new Date(post.created_at).toLocaleString()}
       </small>
     </div>
