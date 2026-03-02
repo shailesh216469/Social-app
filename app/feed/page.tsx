@@ -109,38 +109,59 @@ export default function FeedPage() {
   /* ---------------- REALTIME LIKES ---------------- */
 
   useEffect(() => {
-  if (!user) return;
+    if (!user) return;
 
-  const channel = supabase
-    .channel("likes-channel")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "post_likes",
-      },
-      async (payload: any) => {
+    const channel = supabase
+      .channel("likes-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "post_likes",
+        },
+        async () => {
+          await fetchPosts(user);
+        }
+      )
+      .subscribe();
 
-        console.log("🔥 Realtime:", payload);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
-        // Simply refetch posts when like changes
-        await fetchPosts(user);
-      }
-    )
-    .subscribe();
+  /* ---------------- REALTIME COMMENTS ---------------- */
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [user]);
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("comments-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "comments",
+        },
+        async () => {
+          await fetchPosts(user);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   /* ---------------- TOGGLE LIKE ---------------- */
 
   const toggleLike = async (postId: string, liked: boolean) => {
     if (!user) return;
 
-    // Optimistic update
+    // Optimistic UI
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -161,12 +182,10 @@ export default function FeedPage() {
         .delete()
         .match({ post_id: postId, user_id: user.id });
     } else {
-      await supabase
-        .from("post_likes")
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+      await supabase.from("post_likes").insert({
+        post_id: postId,
+        user_id: user.id,
+      });
     }
   };
 
@@ -186,6 +205,7 @@ export default function FeedPage() {
 
   const deleteComment = async (commentId: string) => {
     if (!user) return;
+
     await supabase.from("comments").delete().eq("id", commentId);
   };
 
