@@ -219,19 +219,19 @@ export default function FeedPage() {
   /* ---------------- TOGGLE LIKE ---------------- */
 
   const toggleLike = async (postId: string, liked: boolean) => {
-    if (!user) return;
+  if (!user) return;
 
-    if (liked) {
-      await supabase
-        .from("post_likes")
-        .delete()
-        .match({ post_id: postId, user_id: user.id });
-    } else {
-      await supabase
-        .from("post_likes")
-        .insert({ post_id: postId, user_id: user.id });
-    }
-  };
+  if (liked) {
+    await supabase
+      .from("post_likes")
+      .delete()
+      .match({ post_id: postId, user_id: user.id });
+  } else {
+    await supabase
+      .from("post_likes")
+      .insert({ post_id: postId, user_id: user.id });
+  }
+};
 
   /* ---------------- ADD COMMENT ---------------- */
 
