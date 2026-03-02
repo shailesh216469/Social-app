@@ -107,39 +107,63 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
-  /* ---------------- REALTIME LIKES (RPC OPTIMIZED) ---------------- */
-
-  useEffect(() => {
-  if (!user) return;
-
-  console.log("🟢 Setting up realtime...");
-
-  const channel = supabase.channel("debug-channel");
-
-  channel
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "post_likes" },
-      (payload) => {
-        console.log("🔥 Realtime triggered:", payload);
-      }
-    )
-    .subscribe((status) => {
-      console.log("📡 Realtime status:", status);
-    });
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [user]);
-
-  /* ---------------- REALTIME COMMENTS (STABLE VERSION) ---------------- */
+  /* ---------------- REALTIME LIKES (FINAL STABLE) ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel("comments-stable-channel")
+      .channel("likes-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "post_likes" },
+        async (payload: any) => {
+          const postId =
+            payload.eventType === "DELETE"
+              ? payload.old?.post_id
+              : payload.new?.post_id;
+
+          if (!postId) return;
+
+          const { data } = await supabase.rpc(
+            "get_post_like_stats",
+            {
+              post_uuid: postId,
+              current_user: user.id,
+            }
+          );
+
+          if (!data || data.length === 0) return;
+
+          const stats = data[0];
+
+          setPosts((prev) =>
+            prev.map((post) =>
+              post.id === postId
+                ? {
+                    ...post,
+                    likeCount: Number(stats.like_count),
+                    likedByMe: stats.liked_by_me,
+                  }
+                : post
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  /* ---------------- REALTIME COMMENTS ---------------- */
+
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("comments-channel")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "comments" },
@@ -151,7 +175,7 @@ export default function FeedPage() {
 
           if (!postId) return;
 
-          const { data, error } = await supabase
+          const { data } = await supabase
             .from("comments")
             .select(`
               id,
@@ -163,7 +187,7 @@ export default function FeedPage() {
             .eq("post_id", postId)
             .order("created_at", { ascending: true });
 
-          if (error || !data) return;
+          if (!data) return;
 
           const normalized = data.map((c: any) => ({
             id: c.id,
@@ -178,10 +202,7 @@ export default function FeedPage() {
           setPosts((prev) =>
             prev.map((post) =>
               post.id === postId
-                ? {
-                    ...post,
-                    comments: normalized,
-                  }
+                ? { ...post, comments: normalized }
                 : post
             )
           );
@@ -197,19 +218,22 @@ export default function FeedPage() {
   /* ---------------- TOGGLE LIKE ---------------- */
 
   const toggleLike = async (postId: string, liked: boolean) => {
-  if (!user) return;
+    if (!user) return;
 
-  if (liked) {
-    await supabase
-      .from("post_likes")
-      .delete()
-      .match({ post_id: postId, user_id: user.id });
-  } else {
-    await supabase
-      .from("post_likes")
-      .insert({ post_id: postId, user_id: user.id });
-  }
-};
+    if (liked) {
+      await supabase
+        .from("post_likes")
+        .delete()
+        .match({ post_id: postId, user_id: user.id });
+    } else {
+      await supabase
+        .from("post_likes")
+        .insert({
+          post_id: postId,
+          user_id: user.id,
+        });
+    }
+  };
 
   /* ---------------- ADD COMMENT ---------------- */
 
@@ -227,6 +251,7 @@ export default function FeedPage() {
 
   const deleteComment = async (commentId: string) => {
     if (!user) return;
+
     await supabase.from("comments").delete().eq("id", commentId);
   };
 
