@@ -109,33 +109,53 @@ export default function FeedPage() {
 
   /* ---------------- REALTIME LIKES ---------------- */
 
-  on(
-  "postgres_changes",
-  { event: "*", schema: "public", table: "post_likes" },
-  async (payload: any) => {
-    console.log("🔥 Payload:", payload);
+  useEffect(() => {
+  if (!user) return;
 
-    const postId =
-      payload.eventType === "DELETE"
-        ? payload.old?.post_id
-        : payload.new?.post_id;
+  const channel = supabase
+    .channel("likes-channel")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "post_likes" },
+      async (payload: any) => {
+        const postId =
+          payload.eventType === "DELETE"
+            ? payload.old?.post_id
+            : payload.new?.post_id;
 
-    console.log("📌 Post ID:", postId);
+        if (!postId) return;
 
-    if (!postId) return;
+        const { data, error } = await supabase.rpc(
+          "get_post_like_stats",
+          {
+            post_uuid: postId,
+            current_user_id: user.id,
+          }
+        );
 
-    const { data, error } = await supabase.rpc(
-      "get_post_like_stats",
-      {
-        post_uuid: postId,
-        current_user_id: user.id,
+        if (error || !data || data.length === 0) return;
+
+        const stats = data[0];
+
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  likeCount: Number(stats.like_count),
+                  likedByMe: stats.liked_by_me,
+                }
+              : post
+          )
+        );
       }
-    );
+    )
+    .subscribe();
 
-    console.log("📊 RPC data:", data);
-    console.log("❌ RPC error:", error);
-  }
-)
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user]);
 
   /* ---------------- REALTIME COMMENTS ---------------- */
 
