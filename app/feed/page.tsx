@@ -58,7 +58,7 @@ export default function FeedPage() {
   /* ---------------- FETCH POSTS ---------------- */
 
   const fetchPosts = async (currentUser: any) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("posts")
       .select(`
         id,
@@ -78,7 +78,7 @@ export default function FeedPage() {
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
 
-    if (!data) return;
+    if (error || !data) return;
 
     const formatted: PostType[] = data.map((post: any) => ({
       id: post.id,
@@ -107,7 +107,7 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
-  /* ---------------- REALTIME LIKES (FINAL STABLE) ---------------- */
+  /* ---------------- REALTIME LIKES ---------------- */
 
   useEffect(() => {
     if (!user) return;
@@ -125,15 +125,15 @@ export default function FeedPage() {
 
           if (!postId) return;
 
-          const { data } = await supabase.rpc(
+          const { data, error } = await supabase.rpc(
             "get_post_like_stats",
             {
               post_uuid: postId,
-              current_user: user.id,
+              current_user_id: user.id, // ✅ FIXED PARAM NAME
             }
           );
 
-          if (!data || data.length === 0) return;
+          if (error || !data || data.length === 0) return;
 
           const stats = data[0];
 
@@ -175,7 +175,7 @@ export default function FeedPage() {
 
           if (!postId) return;
 
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from("comments")
             .select(`
               id,
@@ -187,7 +187,7 @@ export default function FeedPage() {
             .eq("post_id", postId)
             .order("created_at", { ascending: true });
 
-          if (!data) return;
+          if (error || !data) return;
 
           const normalized = data.map((c: any) => ({
             id: c.id,
