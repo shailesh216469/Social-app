@@ -66,7 +66,7 @@ export default function FeedPage() {
         created_at,
         user_id,
         profiles(username),
-        post_likes(id, user_id, post_id),
+        post_likes(user_id),
         comments(
           id,
           content,
@@ -107,67 +107,109 @@ export default function FeedPage() {
     setPosts(formatted);
   };
 
-  /* ---------------- REALTIME (FINAL STABLE VERSION) ---------------- */
+  /* ---------------- REALTIME LIKES (RPC OPTIMIZED) ---------------- */
 
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel("likes-production-channel")
+      .channel("likes-rpc-channel")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "post_likes" },
         async (payload: any) => {
-          console.log("Realtime payload:", payload);
-
           let postId: string | null = null;
 
-          // INSERT
           if (payload.eventType === "INSERT") {
             postId = payload.new?.post_id;
           }
 
-          // DELETE
           if (payload.eventType === "DELETE") {
-            const deletedLikeId = payload.old?.id;
-
-            if (!deletedLikeId) return;
-
-            // Try to fetch post_id using deleted row id
-            const { data } = await supabase
-              .from("post_likes")
-              .select("post_id")
-              .eq("id", deletedLikeId)
-              .single();
-
-            if (data?.post_id) {
-              postId = data.post_id;
-            } else {
-              // If row already gone → fallback full refresh
-              await fetchPosts(user);
-              return;
-            }
+            postId = payload.old?.post_id;
           }
 
           if (!postId) return;
 
-          // Fetch fresh like list
-          const { data: likes } = await supabase
-            .from("post_likes")
-            .select("user_id")
-            .eq("post_id", postId);
+          const { data, error } = await supabase.rpc(
+            "get_post_like_stats",
+            {
+              post_uuid: postId,
+              current_user: user.id,
+            }
+          );
 
-          const totalLikes = likes?.length || 0;
-          const likedByMe =
-            likes?.some((like) => like.user_id === user.id) || false;
+          if (error || !data || data.length === 0) return;
+
+          const stats = data[0];
 
           setPosts((prev) =>
             prev.map((post) =>
               post.id === postId
                 ? {
                     ...post,
-                    likeCount: totalLikes,
-                    likedByMe,
+                    likeCount: Number(stats.like_count),
+                    likedByMe: stats.liked_by_me,
+                  }
+                : post
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  /* ---------------- REALTIME COMMENTS (STABLE VERSION) ---------------- */
+
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel("comments-stable-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "comments" },
+        async (payload: any) => {
+          const postId =
+            payload.eventType === "DELETE"
+              ? payload.old?.post_id
+              : payload.new?.post_id;
+
+          if (!postId) return;
+
+          const { data, error } = await supabase
+            .from("comments")
+            .select(`
+              id,
+              content,
+              user_id,
+              created_at,
+              profiles(username)
+            `)
+            .eq("post_id", postId)
+            .order("created_at", { ascending: true });
+
+          if (error || !data) return;
+
+          const normalized = data.map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            user_id: c.user_id,
+            created_at: c.created_at,
+            profiles: Array.isArray(c.profiles)
+              ? c.profiles[0] || null
+              : c.profiles,
+          }));
+
+          setPosts((prev) =>
+            prev.map((post) =>
+              post.id === postId
+                ? {
+                    ...post,
+                    comments: normalized,
                   }
                 : post
             )
@@ -196,6 +238,25 @@ export default function FeedPage() {
         .from("post_likes")
         .insert({ post_id: postId, user_id: user.id });
     }
+  };
+
+  /* ---------------- ADD COMMENT ---------------- */
+
+  const addComment = async (postId: string, text: string) => {
+    if (!user || !text.trim()) return;
+
+    await supabase.from("comments").insert({
+      post_id: postId,
+      user_id: user.id,
+      content: text,
+    });
+  };
+
+  /* ---------------- DELETE COMMENT ---------------- */
+
+  const deleteComment = async (commentId: string) => {
+    if (!user) return;
+    await supabase.from("comments").delete().eq("id", commentId);
   };
 
   /* ---------------- FRIEND REQUEST COUNT ---------------- */
@@ -244,8 +305,8 @@ export default function FeedPage() {
             post={post}
             currentUserId={user.id}
             onLikeToggle={toggleLike}
-            onAddComment={() => {}}
-            onDeleteComment={() => {}}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
           />
         ))}
       </div>
