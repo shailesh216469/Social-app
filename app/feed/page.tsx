@@ -112,43 +112,21 @@ export default function FeedPage() {
   useEffect(() => {
   if (!user) return;
 
-  const channel = supabase
-    .channel("likes-clean-channel")
+  console.log("🟢 Setting up realtime...");
+
+  const channel = supabase.channel("debug-channel");
+
+  channel
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "post_likes" },
-      async () => {
-        // Instead of reading payload,
-        // simply refresh visible posts safely
-
-        for (const post of posts) {
-          const { data } = await supabase.rpc(
-            "get_post_like_stats",
-            {
-              post_uuid: post.id,
-              current_user: user.id,
-            }
-          );
-
-          if (!data || data.length === 0) continue;
-
-          const stats = data[0];
-
-          setPosts((prev) =>
-            prev.map((p) =>
-              p.id === post.id
-                ? {
-                    ...p,
-                    likeCount: Number(stats.like_count),
-                    likedByMe: stats.liked_by_me,
-                  }
-                : p
-            )
-          );
-        }
+      (payload) => {
+        console.log("🔥 Realtime triggered:", payload);
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("📡 Realtime status:", status);
+    });
 
   return () => {
     supabase.removeChannel(channel);
