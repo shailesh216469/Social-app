@@ -109,69 +109,31 @@ export default function FeedPage() {
   /* ---------------- REALTIME LIKES ---------------- */
 
   useEffect(() => {
-    if (!user) return;
+  if (!user) return;
 
-    const channel = supabase
-      .channel("likes-channel")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "post_likes" },
-        async (payload: any) => {
-console.log("Realtime event:", payload);
-          let postId: string | null = null;
+  const channel = supabase
+    .channel("likes-channel")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "post_likes",
+      },
+      async (payload: any) => {
 
-if (payload.eventType === "INSERT") {
-  postId = payload.new?.post_id;
-}
+        console.log("🔥 Realtime:", payload);
 
-if (payload.eventType === "DELETE") {
-  if (payload.old?.post_id) {
-    postId = payload.old.post_id;
-  } else if (payload.old?.id) {
-    // Fetch post_id manually using deleted row id
-    const { data } = await supabase
-      .from("post_likes")
-      .select("post_id")
-      .eq("id", payload.old.id)
-      .single();
+        // Simply refetch posts when like changes
+        await fetchPosts(user);
+      }
+    )
+    .subscribe();
 
-    postId = data?.post_id || null;
-  }
-}
-
-if (!postId) return;
-
-          const { data } = await supabase.rpc(
-            "get_post_like_stats",
-            {
-              post_uuid: postId,
-              current_user_uuid: user.id,
-            }
-          );
-
-          if (!data || data.length === 0) return;
-
-          const stats = data[0];
-
-          setPosts((prev) =>
-            prev.map((post) =>
-              post.id === postId
-                ? {
-                    ...post,
-                    likeCount: Number(stats.like_count),
-                    likedByMe: stats.liked_by_me,
-                  }
-                : post
-            )
-          );
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user]);
 
   /* ---------------- TOGGLE LIKE ---------------- */
 
