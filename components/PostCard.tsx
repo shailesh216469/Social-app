@@ -49,7 +49,6 @@ export default function PostCard({
       if (!post.likedByMe) {
         onLikeToggle(post.id, false);
 
-        // Haptic feedback (mobile)
         if (navigator.vibrate) {
           navigator.vibrate(10);
         }
@@ -70,7 +69,7 @@ export default function PostCard({
         {post.profiles?.username}
       </Link>
 
-      {/* POST CONTENT (DOUBLE TAP ENABLED) */}
+      {/* POST CONTENT */}
       <p
         className="mt-2 cursor-pointer select-none"
         onClick={handleDoubleTap}
@@ -84,7 +83,6 @@ export default function PostCard({
           onClick={() => {
             onLikeToggle(post.id, post.likedByMe);
 
-            // Haptic feedback
             if (navigator.vibrate) {
               navigator.vibrate(10);
             }
@@ -113,7 +111,7 @@ export default function PostCard({
         {post.comments?.map((comment) => (
           <div
             key={comment.id}
-            className={`p-2 rounded bg-gray-100 transition ${
+            className={`p-2 rounded bg-gray-100 transition animate-commentSlideIn ${
               comment.optimistic ? "opacity-50 italic" : ""
             }`}
           >
