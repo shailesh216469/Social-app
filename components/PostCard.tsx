@@ -37,30 +37,12 @@ export default function PostCard({
   onDeleteComment: (commentId: string) => void;
 }) {
   const [commentText, setCommentText] = useState("");
-  const [lastTap, setLastTap] = useState<number>(0);
-
-  /* ---------------- DOUBLE TAP LIKE ---------------- */
-
-  const handleDoubleTap = () => {
-    const now = Date.now();
-    const DOUBLE_PRESS_DELAY = 300;
-
-    if (now - lastTap < DOUBLE_PRESS_DELAY) {
-      if (!post.likedByMe) {
-        onLikeToggle(post.id, false);
-
-        if (navigator.vibrate) {
-          navigator.vibrate(10);
-        }
-      }
-    }
-
-    setLastTap(now);
-  };
 
   return (
-    <div className="border p-4 rounded-lg shadow-sm bg-white">
-
+    <div
+      id={`post-${post.id}`}
+      className="border p-4 rounded-lg shadow-sm bg-white transition-all duration-500"
+    >
       {/* USERNAME */}
       <Link
         href={`/profile/${post.profiles?.username}`}
@@ -69,35 +51,16 @@ export default function PostCard({
         {post.profiles?.username}
       </Link>
 
-      {/* POST CONTENT */}
-      <p
-        className="mt-2 cursor-pointer select-none"
-        onClick={handleDoubleTap}
-      >
-        {post.content}
-      </p>
+      {/* CONTENT */}
+      <p className="mt-2">{post.content}</p>
 
-      {/* LIKE SECTION */}
+      {/* LIKE */}
       <div className="flex items-center gap-4 mt-3">
         <button
-          onClick={() => {
-            onLikeToggle(post.id, post.likedByMe);
-
-            if (navigator.vibrate) {
-              navigator.vibrate(10);
-            }
-          }}
-          className="relative px-3 py-1 rounded transition"
+          onClick={() => onLikeToggle(post.id, post.likedByMe)}
+          className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
         >
-          <span
-            className={`inline-block transition-transform duration-300 ${
-              post.likedByMe
-                ? "text-red-600 scale-125 animate-heartPop"
-                : "text-gray-600"
-            }`}
-          >
-            {post.likedByMe ? "❤️" : "🤍"}
-          </span>
+          {post.likedByMe ? "Unlike ❤️" : "Like 🤍"}
         </button>
 
         <span className="text-gray-600 text-sm">
@@ -107,37 +70,24 @@ export default function PostCard({
 
       {/* COMMENTS */}
       <div className="mt-4 space-y-3">
-
         {post.comments?.map((comment) => (
-          <div
-            key={comment.id}
-            className={`p-2 rounded bg-gray-100 transition animate-commentSlideIn ${
-              comment.optimistic ? "opacity-50 italic" : ""
-            }`}
-          >
-            <div className="flex justify-between items-center">
+          <div key={comment.id} className="p-2 rounded bg-gray-100">
+            <div className="flex justify-between">
               <span className="font-bold text-sm">
                 {comment.profiles?.username}
               </span>
 
-              {!comment.optimistic &&
-                currentUserId === comment.user_id && (
-                  <button
-                    onClick={() => onDeleteComment(comment.id)}
-                    className="text-red-500 text-xs hover:underline"
-                  >
-                    Delete
-                  </button>
-                )}
+              {currentUserId === comment.user_id && (
+                <button
+                  onClick={() => onDeleteComment(comment.id)}
+                  className="text-red-500 text-xs"
+                >
+                  Delete
+                </button>
+              )}
             </div>
 
             <p className="text-sm">{comment.content}</p>
-
-            {comment.optimistic && (
-              <p className="text-xs text-gray-400 mt-1">
-                Sending...
-              </p>
-            )}
           </div>
         ))}
 
@@ -146,7 +96,7 @@ export default function PostCard({
           <input
             type="text"
             placeholder="Write a comment..."
-            className="border p-2 flex-1 text-sm rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="border p-2 flex-1 text-sm rounded"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
           />
@@ -157,14 +107,13 @@ export default function PostCard({
               onAddComment(post.id, commentText);
               setCommentText("");
             }}
-            className="bg-blue-600 text-white px-3 text-sm rounded hover:bg-blue-700 transition"
+            className="bg-blue-600 text-white px-3 text-sm rounded"
           >
             Post
           </button>
         </div>
       </div>
 
-      {/* TIME */}
       <small className="text-gray-500 block mt-3">
         {new Date(post.created_at).toLocaleString()}
       </small>
