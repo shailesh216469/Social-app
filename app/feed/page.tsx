@@ -118,12 +118,28 @@ export default function FeedPage() {
         { event: "*", schema: "public", table: "post_likes" },
         async (payload: any) => {
 console.log("Realtime event:", payload);
-          const postId =
-            payload.eventType === "DELETE"
-              ? payload.old?.post_id
-              : payload.new?.post_id;
+          let postId: string | null = null;
 
-          if (!postId) return;
+if (payload.eventType === "INSERT") {
+  postId = payload.new?.post_id;
+}
+
+if (payload.eventType === "DELETE") {
+  if (payload.old?.post_id) {
+    postId = payload.old.post_id;
+  } else if (payload.old?.id) {
+    // Fetch post_id manually using deleted row id
+    const { data } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .eq("id", payload.old.id)
+      .single();
+
+    postId = data?.post_id || null;
+  }
+}
+
+if (!postId) return;
 
           const { data } = await supabase.rpc(
             "get_post_like_stats",
