@@ -4,28 +4,47 @@ import Link from "next/link";
 
 export default function FeedHeader({
   pendingCount,
+  notificationCount,
   onLogout,
+  onOpenNotifications,
 }: {
   pendingCount: number;
+  notificationCount: number;
   onLogout: () => void;
+  onOpenNotifications: () => void;
 }) {
   return (
-    <div className="flex justify-between mb-6">
-      <h1 className="text-2xl font-bold">Feed</h1>
+    <div className="flex justify-between items-center mb-6">
+      <h1 className="text-xl font-bold">Social App</h1>
 
       <div className="flex gap-4 items-center">
-        <Link href="/friends" className="text-blue-600 relative">
-          Friends
+
+        {/* Friend Requests */}
+        <Link href="/friends" className="relative">
+          👥
           {pendingCount > 0 && (
-            <span className="ml-1 bg-red-600 text-white text-xs px-2 py-1 rounded-full">
+            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs px-2 rounded-full">
               {pendingCount}
             </span>
           )}
         </Link>
 
+        {/* Notifications */}
+        <button
+          onClick={onOpenNotifications}
+          className="relative"
+        >
+          🔔
+          {notificationCount > 0 && (
+            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs px-2 rounded-full animate-pulse">
+              {notificationCount}
+            </span>
+          )}
+        </button>
+
         <button
           onClick={onLogout}
-          className="bg-black text-white px-4 py-2"
+          className="text-sm text-gray-600"
         >
           Logout
         </button>
