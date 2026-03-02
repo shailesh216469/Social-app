@@ -8,6 +8,7 @@ type NotificationType = {
   type: string;
   actor_username: string;
   is_read: boolean;
+  post_id: string | null;
 };
 
 export default function FeedHeader({
@@ -41,13 +42,35 @@ export default function FeedHeader({
       document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleNotificationClick = (notif: NotificationType) => {
+    onMarkRead(notif.id);
+    setOpen(false);
+
+    if (notif.post_id) {
+      const element = document.getElementById(
+        `post-${notif.post_id}`
+      );
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        element.classList.add("bg-yellow-100");
+
+        setTimeout(() => {
+          element.classList.remove("bg-yellow-100");
+        }, 2000);
+      }
+    }
+  };
+
   return (
     <div className="flex justify-between items-center mb-6">
       <h1 className="text-xl font-bold">Social App</h1>
 
       <div className="flex gap-6 items-center">
-
-        {/* Friend Requests */}
         <Link href="/friends" className="relative text-xl">
           👥
           {pendingCount > 0 && (
@@ -57,13 +80,9 @@ export default function FeedHeader({
           )}
         </Link>
 
-        {/* Notifications */}
         <div className="relative" ref={dropdownRef}>
           <button
-            onClick={() => {
-              setOpen(!open);
-              if (!open) onMarkRead(); // mark all as read when opening
-            }}
+            onClick={() => setOpen(!open)}
             className="relative text-xl"
           >
             🔔
@@ -76,7 +95,6 @@ export default function FeedHeader({
 
           {open && (
             <div className="absolute right-0 mt-3 w-72 bg-white shadow-lg rounded-lg border z-50 max-h-80 overflow-y-auto">
-
               {notifications.length === 0 && (
                 <p className="p-4 text-sm text-gray-500">
                   No notifications
@@ -86,10 +104,12 @@ export default function FeedHeader({
               {notifications.map((notif) => (
                 <div
                   key={notif.id}
+                  onClick={() =>
+                    handleNotificationClick(notif)
+                  }
                   className={`p-3 border-b text-sm hover:bg-gray-100 cursor-pointer ${
                     !notif.is_read ? "bg-gray-50" : ""
                   }`}
-                  onClick={() => onMarkRead(notif.id)}
                 >
                   <span className="font-semibold">
                     {notif.actor_username}
