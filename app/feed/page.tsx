@@ -129,7 +129,7 @@ export default function FeedPage() {
             "get_post_like_stats",
             {
               post_uuid: postId,
-              current_user: user.id, // ✅ must match SQL
+              current_user_uuid: user.id, // ✅ must match SQL
             }
           );
 
